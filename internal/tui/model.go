@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"dev/internal/config"
 	"dev/internal/projects"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -36,6 +37,7 @@ type Model struct {
 	width    int
 	height   int
 	quitting bool
+	icons    config.Icons
 }
 
 type layout struct {
@@ -45,11 +47,12 @@ type layout struct {
 	maxListHeight int
 }
 
-func NewModel(p []projects.Project, keys KeyMap) Model {
+func NewModel(p []projects.Project, keys KeyMap, icons config.Icons) Model {
 	return Model{
 		keys:     keys,
 		projects: p,
 		filtered: p,
+		icons:    icons,
 	}
 }
 
@@ -120,13 +123,14 @@ func (m Model) View() string {
 	if l.isSmall {
 		return viewSmall(m, l)
 	}
+
 	return viewBoxed(m, l)
 }
 
 func viewSmall(m Model, l layout) string {
 	content := renderHeader(l.innerWidth, m.keys, len(m.filtered), len(m.projects)) +
 		renderInput(m.query) +
-		renderList(l, m.filtered, m.cursor, 0) +
+		renderList(m, l, m.filtered, m.cursor, 0) +
 		renderFooter(l.innerWidth, m.keys)
 
 	return "\n " + strings.ReplaceAll(content, "\n", "\n ")
@@ -138,7 +142,7 @@ func viewBoxed(m Model, l layout) string {
 	fixedHeight = min(fixedHeight, l.maxListHeight)
 	content := renderHeader(l.innerWidth, m.keys, len(m.filtered), len(m.projects)) +
 		renderInput(m.query) +
-		renderList(l, m.filtered, m.cursor, fixedHeight) +
+		renderList(m, l, m.filtered, m.cursor, fixedHeight) +
 		renderFooter(l.innerWidth, m.keys)
 
 	box := borderStyle.Width(l.contentWidth).Render(content)
@@ -180,56 +184,75 @@ func renderInput(query string) string {
 	return inputStyle.Render("> "+query+"_") + "\n\n"
 }
 
-func renderList(l layout, filtered []projects.Project, cursor int, fixedHeight int) string {
-	var b strings.Builder
-	renderedLines := 0
+func calculateVisibleRange(itemCount, visibleCount, cursor int) (start, end int) {
+	if itemCount == 0 {
+		return 0, 0
+	}
+
+	start = 0
+	if cursor >= visibleCount {
+		start = cursor - visibleCount + 1
+	}
+
+	end = start + visibleCount
+	if end > itemCount {
+		end = itemCount
+		start = max(end-visibleCount, 0)
+	}
+
+	return start, end
+}
+
+func renderItem(p projects.Project, isSelected bool, maxName, innerWidth int, icon string) string {
+	name := fmt.Sprintf("%-*s", maxName, p.Name)
+	path := fmt.Sprintf("(%s)", p.Path)
+
+	if isSelected {
+		line := fmt.Sprintf("%s  %s %s", icon, name, path)
+		return selectedStyle.Render(lipgloss.NewStyle().Width(innerWidth).Render(line))
+	}
+
+	return fmt.Sprintf("%s  %s %s",
+		normalStyle.Render(icon),
+		normalStyle.Render(name),
+		pathStyle.Render(path),
+	)
+}
+
+func renderList(m Model, l layout, filtered []projects.Project, cursor int, fixedHeight int) string {
+	var content string
+	var renderedLines int
 
 	if len(filtered) == 0 {
-		b.WriteString(pathStyle.Render("No matches") + "\n")
+		content = pathStyle.Render("No matches") + "\n"
 		renderedLines = 1
 	} else {
-		visibleCount := min(len(filtered), l.maxListHeight)
+		var b strings.Builder
+		listHeight := l.maxListHeight
+
 		if fixedHeight > 0 {
-			visibleCount = min(len(filtered), fixedHeight)
+			listHeight = fixedHeight
 		}
 
-		start := 0
-		if cursor >= visibleCount {
-			start = cursor - visibleCount + 1
-		}
-		end := start + visibleCount
-		if end > len(filtered) {
-			end = len(filtered)
-			start = max(end-visibleCount, 0)
-		}
-
+		visibleCount := min(len(filtered), listHeight)
+		start, end := calculateVisibleRange(len(filtered), visibleCount, cursor)
 		maxName := maxNameLen(filtered)
 
 		for i := start; i < end; i++ {
 			p := filtered[i]
-			icon := " "
-			name := fmt.Sprintf("%-*s", maxName, p.Name)
-			path := fmt.Sprintf("(%s)", p.Path)
-
-			if i == cursor {
-				line := fmt.Sprintf(" %s%s %s", icon, name, path)
-				padded := fmt.Sprintf("%-*s", l.innerWidth, line)
-				b.WriteString(selectedStyle.Render(padded))
-			} else {
-				b.WriteString("  " + normalStyle.Render(icon+name) + " " + pathStyle.Render(path))
-			}
+			b.WriteString(renderItem(p, i == cursor, maxName, l.innerWidth, m.icons.Dir))
 			b.WriteString("\n")
 		}
+		content = b.String()
 		renderedLines = end - start
 	}
 
 	if fixedHeight > 0 {
-		for i := renderedLines; i < fixedHeight; i++ {
-			b.WriteString("\n")
-		}
+		padding := max(0, fixedHeight-renderedLines)
+		return content + strings.Repeat("\n", padding)
 	}
 
-	return b.String()
+	return content
 }
 
 func renderFooter(innerWidth int, keys KeyMap) string {

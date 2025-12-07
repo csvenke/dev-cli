@@ -10,4 +10,9 @@ type Config struct {
 	HomeDir  string
 	Editor   string
 	Hooks    []hooks.Hook
+	Icons    Icons
+}
+
+type Icons struct {
+	Dir string
 }
