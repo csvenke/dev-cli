@@ -5,15 +5,27 @@ on:
     branches: [main]
 
 jobs:
-  lint-test-build:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
       - name: Lint
         run: nix run .#lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
       - name: Test
         run: nix run .#test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
       - name: Build
         run: nix run .#build
       - name: Upload artifacts
@@ -21,3 +33,9 @@ jobs:
         with:
           name: dev-cli-${{ github.sha }}
           path: dist/
+
+  merge-ready:
+    runs-on: ubuntu-latest
+    needs: [lint, test, build]
+    steps:
+      - run: echo "LGTM"
