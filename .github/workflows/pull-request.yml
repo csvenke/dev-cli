@@ -1,0 +1,23 @@
+name: pull request
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Lint
+        run: nix run .#lint
+      - name: Test
+        run: nix run .#test
+      - name: Build
+        run: nix run .#build
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-cli-${{ github.sha }}
+          path: dist/

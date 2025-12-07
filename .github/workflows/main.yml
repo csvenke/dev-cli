@@ -1,0 +1,14 @@
+name: main
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  bump-semver:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: Bump semver
+        run: nix run .#bump-semver
