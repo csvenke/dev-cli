@@ -124,7 +124,7 @@ func (m Model) View() string {
 }
 
 func viewSmall(m Model, l layout) string {
-	content := renderHeader(l.innerWidth, m.keys) +
+	content := renderHeader(l.innerWidth, m.keys, len(m.filtered), len(m.projects)) +
 		renderInput(m.query) +
 		renderList(l, m.filtered, m.cursor, 0) +
 		renderFooter(l.innerWidth, m.keys)
@@ -136,7 +136,7 @@ func viewBoxed(m Model, l layout) string {
 	fixedHeight := max(len(m.projects), minFixedListHeight)
 	fixedHeight = min(fixedHeight, maxBoxedListHeight)
 	fixedHeight = min(fixedHeight, l.maxListHeight)
-	content := renderHeader(l.innerWidth, m.keys) +
+	content := renderHeader(l.innerWidth, m.keys, len(m.filtered), len(m.projects)) +
 		renderInput(m.query) +
 		renderList(l, m.filtered, m.cursor, fixedHeight) +
 		renderFooter(l.innerWidth, m.keys)
@@ -167,12 +167,13 @@ func calculateLayout(width, height, maxLineWidth int) layout {
 	}
 }
 
-func renderHeader(innerWidth int, keys KeyMap) string {
+func renderHeader(innerWidth int, keys KeyMap, filteredCount, totalCount int) string {
 	title := titleStyle.Render("Projects")
+	counter := pathStyle.Render(fmt.Sprintf(" (%d/%d)", filteredCount, totalCount))
 	escHint := keymapKeyStyle.Render(keys.Cancel.Help().Key)
-	padding := max(innerWidth-lipgloss.Width(title)-lipgloss.Width(escHint), 1)
+	padding := max(innerWidth-lipgloss.Width(title)-lipgloss.Width(counter)-lipgloss.Width(escHint), 1)
 
-	return title + strings.Repeat(" ", padding) + escHint + "\n\n"
+	return title + counter + strings.Repeat(" ", padding) + escHint + "\n\n"
 }
 
 func renderInput(query string) string {
