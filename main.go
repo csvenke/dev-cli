@@ -51,7 +51,7 @@ func main() {
 	}
 
 	program := tea.NewProgram(
-		tui.NewModel(allProjects, tui.DefaultKeyMap()),
+		tui.NewModel(allProjects, tui.DefaultKeyMap(), cfg.Icons),
 		tea.WithAltScreen(),
 	)
 

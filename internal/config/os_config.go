@@ -15,6 +15,9 @@ func New() Config {
 		DevPaths: os.Getenv("DEV_PATHS"),
 		HomeDir:  homeDir,
 		Editor:   editor,
+		Icons: Icons{
+			Dir: "",
+		},
 		Hooks: []hooks.Hook{
 			&hooks.TmuxHook{},
 			&hooks.ZellijHook{},
