@@ -14,10 +14,11 @@ import (
 // Layout constants
 const (
 	smallWidthThreshold  = 120
-	smallHeightThreshold = 20
+	smallHeightThreshold = 25
 	minContentWidth      = 40
 	listPaddingLines     = 10
 	minListHeight        = 5
+	minFixedListHeight   = 10
 	boxPadding           = 4
 	innerPadding         = 6
 	linePadding          = 4
@@ -124,16 +125,18 @@ func (m Model) View() string {
 func viewSmall(m Model, l layout) string {
 	content := renderHeader(l.innerWidth, m.keys) +
 		renderInput(m.query) +
-		renderList(l, m.filtered, m.cursor) +
+		renderList(l, m.filtered, m.cursor, 0) +
 		renderFooter(l.innerWidth, m.keys)
 
 	return "\n " + strings.ReplaceAll(content, "\n", "\n ")
 }
 
 func viewBoxed(m Model, l layout) string {
+	fixedHeight := max(len(m.projects), minFixedListHeight)
+	fixedHeight = min(fixedHeight, l.maxListHeight)
 	content := renderHeader(l.innerWidth, m.keys) +
 		renderInput(m.query) +
-		renderList(l, m.filtered, m.cursor) +
+		renderList(l, m.filtered, m.cursor, fixedHeight) +
 		renderFooter(l.innerWidth, m.keys)
 
 	box := borderStyle.Width(l.contentWidth).Render(content)
@@ -174,40 +177,53 @@ func renderInput(query string) string {
 	return inputStyle.Render("> "+query+"_") + "\n\n"
 }
 
-func renderList(l layout, filtered []projects.Project, cursor int) string {
-	if len(filtered) == 0 {
-		return pathStyle.Render("No matches") + "\n"
-	}
-
-	visibleCount := min(len(filtered), l.maxListHeight)
-
-	start := 0
-	if cursor >= visibleCount {
-		start = cursor - visibleCount + 1
-	}
-	end := start + visibleCount
-	if end > len(filtered) {
-		end = len(filtered)
-		start = max(end-visibleCount, 0)
-	}
-
-	maxName := maxNameLen(filtered)
-
+func renderList(l layout, filtered []projects.Project, cursor int, fixedHeight int) string {
 	var b strings.Builder
-	for i := start; i < end; i++ {
-		p := filtered[i]
-		icon := " "
-		name := fmt.Sprintf("%-*s", maxName, p.Name)
-		path := fmt.Sprintf("(%s)", p.Path)
+	renderedLines := 0
 
-		if i == cursor {
-			line := fmt.Sprintf(" %s%s %s", icon, name, path)
-			padded := fmt.Sprintf("%-*s", l.innerWidth, line)
-			b.WriteString(selectedStyle.Render(padded))
-		} else {
-			b.WriteString("  " + normalStyle.Render(icon+name) + " " + pathStyle.Render(path))
+	if len(filtered) == 0 {
+		b.WriteString(pathStyle.Render("No matches") + "\n")
+		renderedLines = 1
+	} else {
+		visibleCount := min(len(filtered), l.maxListHeight)
+		if fixedHeight > 0 {
+			visibleCount = min(len(filtered), fixedHeight)
 		}
-		b.WriteString("\n")
+
+		start := 0
+		if cursor >= visibleCount {
+			start = cursor - visibleCount + 1
+		}
+		end := start + visibleCount
+		if end > len(filtered) {
+			end = len(filtered)
+			start = max(end-visibleCount, 0)
+		}
+
+		maxName := maxNameLen(filtered)
+
+		for i := start; i < end; i++ {
+			p := filtered[i]
+			icon := " "
+			name := fmt.Sprintf("%-*s", maxName, p.Name)
+			path := fmt.Sprintf("(%s)", p.Path)
+
+			if i == cursor {
+				line := fmt.Sprintf(" %s%s %s", icon, name, path)
+				padded := fmt.Sprintf("%-*s", l.innerWidth, line)
+				b.WriteString(selectedStyle.Render(padded))
+			} else {
+				b.WriteString("  " + normalStyle.Render(icon+name) + " " + pathStyle.Render(path))
+			}
+			b.WriteString("\n")
+		}
+		renderedLines = end - start
+	}
+
+	if fixedHeight > 0 {
+		for i := renderedLines; i < fixedHeight; i++ {
+			b.WriteString("\n")
+		}
 	}
 
 	return b.String()
