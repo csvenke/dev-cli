@@ -7,12 +7,7 @@ import (
 )
 
 func New() Config {
-	editor := os.Getenv("VISUAL")
-
-	if editor == "" {
-		editor = os.Getenv("EDITOR")
-	}
-
+	editor := getEditorFromEnv()
 	homeDir, _ := os.UserHomeDir()
 
 	return Config{
@@ -25,4 +20,14 @@ func New() Config {
 			&hooks.ZellijHook{},
 		},
 	}
+}
+
+func getEditorFromEnv() string {
+	editor := os.Getenv("VISUAL")
+
+	if editor == "" {
+		editor = os.Getenv("EDITOR")
+	}
+
+	return editor
 }
