@@ -17,37 +17,22 @@
         { pkgs, ... }:
         let
           inherit (pkgs) lib callPackage;
+          version = self.shortRev or self.dirtyShortRev or "snapshot";
           scripts = lib.packagesFromDirectoryRecursive {
             inherit callPackage;
-            directory = ./scripts;
+            directory = ./nix/scripts;
           };
-          version = self.shortRev or self.dirtyShortRev or "snapshot";
+          dev-cli = callPackage ./nix/package.nix {
+            inherit version;
+          };
+          shell = callPackage ./nix/shell.nix { };
         in
         {
           packages = scripts // {
-            default = pkgs.buildGoModule {
-              pname = "dev";
-              version = version;
-              src = ./.;
-              vendorHash = "sha256-6ZEO+r0ywajO2m+cVVRNWh080868fZR1QQHNW9DIBDI=";
-              ldflags = [
-                "-s"
-                "-w"
-                "-X main.version=${version}"
-              ];
-              meta = {
-                mainProgram = "dev";
-              };
-            };
+            default = dev-cli;
           };
           devShells = {
-            default = pkgs.mkShell {
-              packages = with pkgs; [
-                go
-                gopls
-                golangci-lint
-              ];
-            };
+            default = shell;
           };
         };
     };
