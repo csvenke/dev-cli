@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"dev/internal/projects"
-	"dev/internal/selection"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -22,7 +21,7 @@ type Model struct {
 	quitting bool
 }
 
-func initialModel(p []projects.Project) Model {
+func newModel(p []projects.Project) Model {
 	return Model{
 		projects: p,
 		filtered: p,
@@ -47,21 +46,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "enter":
-			m.Selected = selection.SelectProject(m.filtered, m.cursor)
+			if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
+				m.Selected = m.filtered[m.cursor].Path
+			}
 			m.quitting = true
 			return m, tea.Quit
 
 		case "up", "ctrl+p":
-			m.cursor = selection.MoveCursorUp(m.cursor)
+			if m.cursor > 0 {
+				m.cursor--
+			}
 			return m, nil
 
 		case "down", "ctrl+n":
-			m.cursor = selection.MoveCursorDown(m.cursor, len(m.filtered)-1)
+			if m.cursor < len(m.filtered)-1 {
+				m.cursor++
+			}
 			return m, nil
 
 		case "backspace":
 			if len(m.query) > 0 {
-				m.query = selection.DeleteLastChar(m.query)
+				m.query = m.query[:len(m.query)-1]
 				m.filtered = projects.Filter(m.projects, m.query)
 				m.cursor = 0
 			}
@@ -69,7 +74,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		default:
 			if len(msg.String()) == 1 {
-				m.query = selection.AppendChar(m.query, msg.String())
+				m.query += msg.String()
 				m.filtered = projects.Filter(m.projects, m.query)
 				m.cursor = 0
 			}
@@ -80,7 +85,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func RenderKeyMap(label string, key string) string {
+func renderKeyMap(label string, key string) string {
 	return keymapLabelStyle.Render(label) + " " + keymapKeyStyle.Render(key)
 }
 
@@ -174,7 +179,7 @@ func (m Model) View() string {
 	}
 
 	b.WriteString("\n")
-	hints := fmt.Sprintf("%s %s", RenderKeyMap("next", "ctrl-n"), RenderKeyMap("prev", "ctrl-p"))
+	hints := fmt.Sprintf("%s %s", renderKeyMap("next", "ctrl-n"), renderKeyMap("prev", "ctrl-p"))
 	hintsLine := lipgloss.PlaceHorizontal(innerWidth, lipgloss.Right, hints)
 	b.WriteString(hintsLine)
 

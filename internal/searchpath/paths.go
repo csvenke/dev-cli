@@ -1,4 +1,4 @@
-package paths
+package searchpath
 
 import (
 	"io/fs"
@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func Find(readDir func(string) ([]fs.DirEntry, error), args []string, devPaths string, homeDir string) []string {
+func Resolve(readDir func(string) ([]fs.DirEntry, error), args []string, devPaths string, homeDir string) []string {
 	if len(args) > 0 {
 		return args
 	}

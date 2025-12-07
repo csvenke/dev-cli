@@ -8,9 +8,9 @@ import (
 	"syscall"
 
 	"dev/internal/config"
-	"dev/internal/finder"
 	"dev/internal/hooks"
-	"dev/internal/paths"
+	"dev/internal/projects"
+	"dev/internal/searchpath"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -18,16 +18,16 @@ import (
 func main() {
 	cfg := config.New()
 
-	searchPaths := paths.Find(os.ReadDir, cfg.Args, cfg.DevPaths, cfg.HomeDir)
-	projects := finder.Find(filepath.WalkDir, searchPaths)
+	searchPaths := searchpath.Resolve(os.ReadDir, cfg.Args, cfg.DevPaths, cfg.HomeDir)
+	allProjects := projects.Discover(filepath.WalkDir, searchPaths)
 
-	if len(projects) == 0 {
+	if len(allProjects) == 0 {
 		fmt.Fprintln(os.Stderr, "No projects found")
 		os.Exit(1)
 	}
 
 	program := tea.NewProgram(
-		initialModel(projects),
+		newModel(allProjects),
 		tea.WithAltScreen(),
 	)
 

@@ -1,4 +1,4 @@
-package paths
+package searchpath
 
 import (
 	"errors"
@@ -8,12 +8,12 @@ import (
 	"dev/internal/testutil"
 )
 
-func TestFind_PrefersArgs(t *testing.T) {
+func TestResolve_PrefersArgs(t *testing.T) {
 	mockReadDir := func(path string) ([]fs.DirEntry, error) {
 		return nil, nil
 	}
 
-	result := Find(mockReadDir, []string{"/custom/path", "/another/path"}, "/should/be/ignored", "/home/user")
+	result := Resolve(mockReadDir, []string{"/custom/path", "/another/path"}, "/should/be/ignored", "/home/user")
 
 	if len(result) != 2 {
 		t.Errorf("expected 2 paths, got %d", len(result))
@@ -23,12 +23,12 @@ func TestFind_PrefersArgs(t *testing.T) {
 	}
 }
 
-func TestFind_FallsBackToDevPaths(t *testing.T) {
+func TestResolve_FallsBackToDevPaths(t *testing.T) {
 	mockReadDir := func(path string) ([]fs.DirEntry, error) {
 		return nil, nil
 	}
 
-	result := Find(mockReadDir, []string{}, "/repos /work /projects", "/home/user")
+	result := Resolve(mockReadDir, []string{}, "/repos /work /projects", "/home/user")
 
 	if len(result) != 3 {
 		t.Errorf("expected 3 paths, got %d", len(result))
@@ -41,7 +41,7 @@ func TestFind_FallsBackToDevPaths(t *testing.T) {
 	}
 }
 
-func TestFind_FallsBackToHomeSubdirs(t *testing.T) {
+func TestResolve_FallsBackToHomeSubdirs(t *testing.T) {
 	mockReadDir := func(path string) ([]fs.DirEntry, error) {
 		return []fs.DirEntry{
 			testutil.NewMockDir("repos"),
@@ -50,14 +50,14 @@ func TestFind_FallsBackToHomeSubdirs(t *testing.T) {
 		}, nil
 	}
 
-	result := Find(mockReadDir, []string{}, "", "/home/user")
+	result := Resolve(mockReadDir, []string{}, "", "/home/user")
 
 	if len(result) != 2 {
 		t.Errorf("expected 2 paths (dirs only), got %d", len(result))
 	}
 }
 
-func TestFind_ExcludesHiddenDirs(t *testing.T) {
+func TestResolve_ExcludesHiddenDirs(t *testing.T) {
 	mockReadDir := func(path string) ([]fs.DirEntry, error) {
 		return []fs.DirEntry{
 			testutil.NewMockDir(".config"),
@@ -67,7 +67,7 @@ func TestFind_ExcludesHiddenDirs(t *testing.T) {
 		}, nil
 	}
 
-	result := Find(mockReadDir, []string{}, "", "/home/user")
+	result := Resolve(mockReadDir, []string{}, "", "/home/user")
 
 	if len(result) != 2 {
 		t.Errorf("expected 2 paths (non-hidden), got %d", len(result))
@@ -79,38 +79,38 @@ func TestFind_ExcludesHiddenDirs(t *testing.T) {
 	}
 }
 
-func TestFind_ReturnsNilOnEmptyHomeDir(t *testing.T) {
+func TestResolve_ReturnsNilOnEmptyHomeDir(t *testing.T) {
 	mockReadDir := func(path string) ([]fs.DirEntry, error) {
 		return nil, nil
 	}
 
-	result := Find(mockReadDir, []string{}, "", "")
+	result := Resolve(mockReadDir, []string{}, "", "")
 
 	if result != nil {
 		t.Errorf("expected nil result on empty home dir, got %v", result)
 	}
 }
 
-func TestFind_HandlesReadDirError(t *testing.T) {
+func TestResolve_HandlesReadDirError(t *testing.T) {
 	mockReadDir := func(path string) ([]fs.DirEntry, error) {
 		return nil, errors.New("permission denied")
 	}
 
-	result := Find(mockReadDir, []string{}, "", "/home/user")
+	result := Resolve(mockReadDir, []string{}, "", "/home/user")
 
 	if result != nil {
 		t.Errorf("expected nil result on read dir error, got %v", result)
 	}
 }
 
-func TestFind_EmptyDevPathsReturnsHomeSubdirs(t *testing.T) {
+func TestResolve_EmptyDevPathsReturnsHomeSubdirs(t *testing.T) {
 	mockReadDir := func(path string) ([]fs.DirEntry, error) {
 		return []fs.DirEntry{
 			testutil.NewMockDir("repos"),
 		}, nil
 	}
 
-	result := Find(mockReadDir, []string{}, "", "/home/user")
+	result := Resolve(mockReadDir, []string{}, "", "/home/user")
 
 	if len(result) != 1 {
 		t.Errorf("expected 1 path, got %d", len(result))
@@ -120,7 +120,7 @@ func TestFind_EmptyDevPathsReturnsHomeSubdirs(t *testing.T) {
 	}
 }
 
-func TestFind_BuildsFullPaths(t *testing.T) {
+func TestResolve_BuildsFullPaths(t *testing.T) {
 	mockReadDir := func(path string) ([]fs.DirEntry, error) {
 		return []fs.DirEntry{
 			testutil.NewMockDir("repos"),
@@ -128,7 +128,7 @@ func TestFind_BuildsFullPaths(t *testing.T) {
 		}, nil
 	}
 
-	result := Find(mockReadDir, []string{}, "", "/home/user")
+	result := Resolve(mockReadDir, []string{}, "", "/home/user")
 
 	expected := []string{"/home/user/repos", "/home/user/work"}
 	for i, exp := range expected {
