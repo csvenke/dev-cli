@@ -4,7 +4,7 @@
 }:
 
 writeShellApplication {
-  name = "release";
+  name = "create-release";
   runtimeInputs = [
     goreleaser
   ];

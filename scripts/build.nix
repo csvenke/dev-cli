@@ -1,10 +1,17 @@
-{ writeShellApplication, go }:
+{
+  writeShellApplication,
+  go,
+  goreleaser,
+}:
 
 writeShellApplication {
   name = "build";
-  runtimeInputs = [ go ];
+  runtimeInputs = [
+    go
+    goreleaser
+  ];
   text = ''
     export GOFLAGS="-buildvcs=false"
-    go build -o bin/dev .
+    goreleaser release --snapshot --clean
   '';
 }
