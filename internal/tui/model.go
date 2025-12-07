@@ -1,4 +1,4 @@
-package main
+package tui
 
 import (
 	"fmt"
@@ -41,7 +41,7 @@ type layout struct {
 	maxListHeight int
 }
 
-func newModel(p []projects.Project) Model {
+func NewModel(p []projects.Project) Model {
 	return Model{
 		projects: p,
 		filtered: p,

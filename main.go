@@ -11,6 +11,7 @@ import (
 	"dev/internal/hooks"
 	"dev/internal/projects"
 	"dev/internal/searchpath"
+	"dev/internal/tui"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -27,7 +28,7 @@ func main() {
 	}
 
 	program := tea.NewProgram(
-		newModel(allProjects),
+		tui.NewModel(allProjects),
 		tea.WithAltScreen(),
 	)
 
@@ -37,7 +38,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := finalModel.(Model)
+	m := finalModel.(tui.Model)
 	if m.Selected == "" {
 		os.Exit(0)
 	}
