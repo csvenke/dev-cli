@@ -283,6 +283,181 @@ func TestFilter_EmptyProjectList(t *testing.T) {
 	}
 }
 
+func TestFilter_FuzzyMatchesOutOfOrder(t *testing.T) {
+	projects := []Project{
+		{Name: "dev-cli", Path: "/repos/dev-cli"},
+		{Name: "frontend", Path: "/repos/frontend"},
+	}
+
+	// "dc" should match "dev-cli" (d...c)
+	result := Filter(projects, "dc")
+
+	if len(result) != 1 {
+		t.Errorf("expected 1 match, got %d", len(result))
+	}
+	if result[0].Name != "dev-cli" {
+		t.Errorf("expected 'dev-cli', got %q", result[0].Name)
+	}
+}
+
+func TestFilter_FuzzyRanksBetterMatchesFirst(t *testing.T) {
+	projects := []Project{
+		{Name: "other-project", Path: "/repos/other-project"},
+		{Name: "dev-cli", Path: "/repos/dev-cli"},
+		{Name: "xdevxcli", Path: "/repos/xdevxcli"},
+	}
+
+	result := Filter(projects, "devcli")
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 matches, got %d", len(result))
+	}
+	// "dev-cli" should rank higher than "xdevxcli" (word boundary matches)
+	if result[0].Name != "dev-cli" {
+		t.Errorf("expected 'dev-cli' first, got %q", result[0].Name)
+	}
+}
+
+func TestFilter_FuzzyPrefersWordBoundaryMatches(t *testing.T) {
+	projects := []Project{
+		{Name: "xdev", Path: "/repos/xdev"},
+		{Name: "dev-cli", Path: "/repos/dev-cli"},
+	}
+
+	result := Filter(projects, "dev")
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 matches, got %d", len(result))
+	}
+	// "dev-cli" should rank higher (starts with "dev")
+	if result[0].Name != "dev-cli" {
+		t.Errorf("expected 'dev-cli' first (word boundary), got %q", result[0].Name)
+	}
+}
+
+func TestFuzzyScore_ScoreIsNonNegative(t *testing.T) {
+	properties := gopter.NewProperties(nil)
+
+	properties.Property("score is always non-negative", prop.ForAll(
+		func(query, target string) bool {
+			return fuzzyScore(query, target) >= 0
+		},
+		gen.AlphaString(),
+		gen.AlphaString(),
+	))
+
+	properties.TestingRun(t)
+}
+
+func TestFuzzyScore_EmptyQueryAlwaysMatches(t *testing.T) {
+	properties := gopter.NewProperties(nil)
+
+	properties.Property("empty query matches any target", prop.ForAll(
+		func(target string) bool {
+			return fuzzyScore("", target) > 0
+		},
+		gen.AlphaString(),
+	))
+
+	properties.TestingRun(t)
+}
+
+func TestFuzzyScore_QueryLongerThanTargetNeverMatches(t *testing.T) {
+	properties := gopter.NewProperties(nil)
+
+	properties.Property("query longer than target returns 0", prop.ForAll(
+		func(query, target string) bool {
+			if len(query) > len(target) {
+				return fuzzyScore(query, target) == 0
+			}
+			return true
+		},
+		gen.AlphaString(),
+		gen.AlphaString(),
+	))
+
+	properties.TestingRun(t)
+}
+
+func TestFuzzyScore_ExactMatchAlwaysSucceeds(t *testing.T) {
+	properties := gopter.NewProperties(nil)
+
+	properties.Property("identical strings always match", prop.ForAll(
+		func(s string) bool {
+			if len(s) == 0 {
+				return true
+			}
+			return fuzzyScore(s, s) > 0
+		},
+		gen.AlphaString(),
+	))
+
+	properties.TestingRun(t)
+}
+
+func TestFuzzyScore_PrefixAlwaysMatches(t *testing.T) {
+	properties := gopter.NewProperties(nil)
+
+	properties.Property("prefix of target always matches", prop.ForAll(
+		func(target string) bool {
+			if len(target) == 0 {
+				return true
+			}
+			prefixLen := max(len(target)/2, 1)
+			prefix := target[:prefixLen]
+			return fuzzyScore(strings.ToLower(prefix), strings.ToLower(target)) > 0
+		},
+		gen.AlphaString(),
+	))
+
+	properties.TestingRun(t)
+}
+
+func TestFuzzyScore_MatchesAllCharactersInOrder(t *testing.T) {
+	tests := []struct {
+		query  string
+		target string
+		match  bool
+	}{
+		{"abc", "abc", true},
+		{"abc", "aXbXc", true},
+		{"dc", "dev-cli", true},
+		{"fnt", "frontend", true},
+		{"abc", "cba", false},
+		{"abc", "ab", false},
+		{"xyz", "abc", false},
+	}
+
+	for _, tt := range tests {
+		score := fuzzyScore(tt.query, tt.target)
+		matched := score > 0
+		if matched != tt.match {
+			t.Errorf("fuzzyScore(%q, %q): expected match=%v, got score=%d",
+				tt.query, tt.target, tt.match, score)
+		}
+	}
+}
+
+func TestFuzzyScore_ConsecutiveMatchesScoreHigher(t *testing.T) {
+	// "dev" in "dev-cli" (consecutive) should score higher than "dev" in "dXeXv"
+	consecutive := fuzzyScore("dev", "dev-cli")
+	scattered := fuzzyScore("dev", "dXeXv")
+
+	if consecutive <= scattered {
+		t.Errorf("consecutive match should score higher: %d vs %d", consecutive, scattered)
+	}
+}
+
+func TestFuzzyScore_WordBoundaryMatchesScoreHigher(t *testing.T) {
+	// "dev" at start should score higher than "dev" in middle
+	atStart := fuzzyScore("dev", "dev-cli")
+	inMiddle := fuzzyScore("dev", "mydev")
+
+	if atStart <= inMiddle {
+		t.Errorf("word boundary match should score higher: %d vs %d", atStart, inMiddle)
+	}
+}
+
 // Property-based tests
 
 func TestFilter_ResultIsSubsetOfInput(t *testing.T) {

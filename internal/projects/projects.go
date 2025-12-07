@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -53,12 +54,77 @@ func Filter(projects []Project, query string) []Project {
 	}
 
 	query = strings.ToLower(query)
-	var result []Project
+
+	type scored struct {
+		project Project
+		score   int
+	}
+
+	var matches []scored
 	for _, p := range projects {
-		if strings.Contains(strings.ToLower(p.Name), query) ||
-			strings.Contains(strings.ToLower(p.Path), query) {
-			result = append(result, p)
+		nameScore := fuzzyScore(query, strings.ToLower(p.Name))
+		pathScore := fuzzyScore(query, strings.ToLower(p.Path))
+		bestScore := max(pathScore, nameScore)
+
+		if bestScore > 0 {
+			matches = append(matches, scored{project: p, score: bestScore})
 		}
 	}
+
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].score > matches[j].score
+	})
+
+	result := make([]Project, len(matches))
+	for i, m := range matches {
+		result[i] = m.project
+	}
+
 	return result
+}
+
+const (
+	scoreMatch        = 1
+	scoreConsecutive  = 2
+	scoreWordBoundary = 3
+)
+
+func fuzzyScore(query, target string) int {
+	if len(query) == 0 {
+		return 1
+	}
+	if len(query) > len(target) {
+		return 0
+	}
+
+	score := 0
+	qi := 0
+	prevMatch := -2
+
+	for ti := 0; ti < len(target) && qi < len(query); ti++ {
+		if len(target)-ti < len(query)-qi {
+			return 0
+		}
+
+		if target[ti] == query[qi] {
+			score += scoreMatch
+			if ti == prevMatch+1 {
+				score += scoreConsecutive
+			}
+			if ti == 0 || !isLetter(target[ti-1]) {
+				score += scoreWordBoundary
+			}
+			prevMatch = ti
+			qi++
+		}
+	}
+
+	if qi == len(query) {
+		return score
+	}
+	return 0
+}
+
+func isLetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
