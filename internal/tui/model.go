@@ -19,6 +19,7 @@ const (
 	listPaddingLines     = 10
 	minListHeight        = 5
 	minFixedListHeight   = 10
+	maxBoxedListHeight   = 20
 	boxPadding           = 4
 	innerPadding         = 6
 	linePadding          = 4
@@ -133,6 +134,7 @@ func viewSmall(m Model, l layout) string {
 
 func viewBoxed(m Model, l layout) string {
 	fixedHeight := max(len(m.projects), minFixedListHeight)
+	fixedHeight = min(fixedHeight, maxBoxedListHeight)
 	fixedHeight = min(fixedHeight, l.maxListHeight)
 	content := renderHeader(l.innerWidth, m.keys) +
 		renderInput(m.query) +
