@@ -3,6 +3,6 @@
 writeShellApplication {
   name = "clean";
   text = ''
-    rm -rf bin/
+    rm -rf dist/
   '';
 }
