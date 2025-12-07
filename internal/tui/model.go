@@ -6,6 +6,7 @@ import (
 
 	"dev/internal/projects"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -24,6 +25,7 @@ const (
 )
 
 type Model struct {
+	keys     KeyMap
 	projects []projects.Project
 	filtered []projects.Project
 	query    string
@@ -41,8 +43,9 @@ type layout struct {
 	maxListHeight int
 }
 
-func NewModel(p []projects.Project) Model {
+func NewModel(p []projects.Project, keys KeyMap) Model {
 	return Model{
+		keys:     keys,
 		projects: p,
 		filtered: p,
 	}
@@ -60,31 +63,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "esc":
+		switch {
+		case key.Matches(msg, m.keys.Cancel):
 			m.quitting = true
 			return m, tea.Quit
 
-		case "enter":
+		case key.Matches(msg, m.keys.Select):
 			if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
 				m.Selected = m.filtered[m.cursor].Path
 			}
 			m.quitting = true
 			return m, tea.Quit
 
-		case "up", "ctrl+p":
+		case key.Matches(msg, m.keys.PrevItem):
 			if m.cursor > 0 {
 				m.cursor--
 			}
 			return m, nil
 
-		case "down", "ctrl+n":
+		case key.Matches(msg, m.keys.NextItem):
 			if m.cursor < len(m.filtered)-1 {
 				m.cursor++
 			}
 			return m, nil
 
-		case "backspace":
+		case key.Matches(msg, m.keys.Backspace):
 			if len(m.query) > 0 {
 				m.query = m.query[:len(m.query)-1]
 				m.filtered = projects.Filter(m.projects, m.query)
@@ -119,19 +122,19 @@ func (m Model) View() string {
 }
 
 func viewSmall(m Model, l layout) string {
-	content := renderHeader(l.innerWidth) +
+	content := renderHeader(l.innerWidth, m.keys) +
 		renderInput(m.query) +
 		renderList(l, m.filtered, m.cursor) +
-		renderFooter(l.innerWidth)
+		renderFooter(l.innerWidth, m.keys)
 
 	return "\n " + strings.ReplaceAll(content, "\n", "\n ")
 }
 
 func viewBoxed(m Model, l layout) string {
-	content := renderHeader(l.innerWidth) +
+	content := renderHeader(l.innerWidth, m.keys) +
 		renderInput(m.query) +
 		renderList(l, m.filtered, m.cursor) +
-		renderFooter(l.innerWidth)
+		renderFooter(l.innerWidth, m.keys)
 
 	box := borderStyle.Width(l.contentWidth).Render(content)
 
@@ -159,9 +162,9 @@ func calculateLayout(width, height, maxLineWidth int) layout {
 	}
 }
 
-func renderHeader(innerWidth int) string {
+func renderHeader(innerWidth int, keys KeyMap) string {
 	title := titleStyle.Render("Projects")
-	escHint := keymapKeyStyle.Render("esc")
+	escHint := keymapKeyStyle.Render(keys.Cancel.Help().Key)
 	padding := max(innerWidth-lipgloss.Width(title)-lipgloss.Width(escHint), 1)
 
 	return title + strings.Repeat(" ", padding) + escHint + "\n\n"
@@ -210,13 +213,21 @@ func renderList(l layout, filtered []projects.Project, cursor int) string {
 	return b.String()
 }
 
-func renderFooter(innerWidth int) string {
-	hints := renderKeyMap("next", "ctrl-n") + " " + renderKeyMap("prev", "ctrl-p")
+func renderFooter(innerWidth int, keys KeyMap) string {
+	hints := fmt.Sprintf("%s %s %s",
+		renderKeyHelp(keys.NextItem),
+		renderKeyHelp(keys.PrevItem),
+		renderKeyHelp(keys.Select),
+	)
+
 	return "\n" + lipgloss.PlaceHorizontal(innerWidth, lipgloss.Right, hints)
 }
 
-func renderKeyMap(label, key string) string {
-	return keymapLabelStyle.Render(label) + " " + keymapKeyStyle.Render(key)
+func renderKeyHelp(binding key.Binding) string {
+	return fmt.Sprintf("%s %s",
+		keymapLabelStyle.Render(binding.Help().Desc),
+		keymapKeyStyle.Render(binding.Help().Key),
+	)
 }
 
 func maxLineWidth(projs []projects.Project) int {

@@ -29,7 +29,7 @@
               pname = "dev";
               version = version;
               src = ./.;
-              vendorHash = "sha256-SWDTx8MRryktJYjunBKU8mXDthq7ClAb82lY5eF1snM=";
+              vendorHash = "sha256-6ZEO+r0ywajO2m+cVVRNWh080868fZR1QQHNW9DIBDI=";
               ldflags = [
                 "-s"
                 "-w"
