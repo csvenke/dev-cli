@@ -1,51 +1,39 @@
 package projects
 
 import (
-	"errors"
-	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	"dev/internal/testutil"
-
+	"dev/internal/fuzzy"
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
 )
 
-type walkEntry struct {
-	path     string
-	dirEntry fs.DirEntry
-	err      error
+// Helper to create a git repo in temp dir
+func createGitRepo(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(path, ".git"), 0o755); err != nil {
+		t.Fatalf("failed to create git repo at %s: %v", path, err)
+	}
 }
 
-func mockWalkDir(entries []walkEntry) func(string, fs.WalkDirFunc) error {
-	return func(root string, fn fs.WalkDirFunc) error {
-		for _, entry := range entries {
-			if strings.HasPrefix(entry.path, root) || entry.path == root {
-				err := fn(entry.path, entry.dirEntry, entry.err)
-				if err == fs.SkipDir {
-					continue
-				}
-				if err != nil {
-					return err
-				}
-			}
-		}
-		return nil
+// Helper to create a regular directory
+func createDir(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("failed to create dir at %s: %v", path, err)
 	}
 }
 
 func TestDiscover_DiscoversGitRepos(t *testing.T) {
-	walkDir := mockWalkDir([]walkEntry{
-		{path: "/repos", dirEntry: testutil.NewMockDir("repos")},
-		{path: "/repos/project-a", dirEntry: testutil.NewMockDir("project-a")},
-		{path: "/repos/project-a/.git", dirEntry: testutil.NewMockDir(".git")},
-		{path: "/repos/project-b", dirEntry: testutil.NewMockDir("project-b")},
-		{path: "/repos/project-b/.git", dirEntry: testutil.NewMockDir(".git")},
-	})
+	root := t.TempDir()
+	createGitRepo(t, filepath.Join(root, "project-a"))
+	createGitRepo(t, filepath.Join(root, "project-b"))
 
-	projects := Discover(walkDir, []string{"/repos"})
+	projects := Discover([]string{root})
 
 	if len(projects) != 2 {
 		t.Errorf("expected 2 projects, got %d", len(projects))
@@ -53,15 +41,11 @@ func TestDiscover_DiscoversGitRepos(t *testing.T) {
 }
 
 func TestDiscover_IgnoresNonGitDirs(t *testing.T) {
-	walkDir := mockWalkDir([]walkEntry{
-		{path: "/repos", dirEntry: testutil.NewMockDir("repos")},
-		{path: "/repos/not-a-project", dirEntry: testutil.NewMockDir("not-a-project")},
-		{path: "/repos/not-a-project/src", dirEntry: testutil.NewMockDir("src")},
-		{path: "/repos/real-project", dirEntry: testutil.NewMockDir("real-project")},
-		{path: "/repos/real-project/.git", dirEntry: testutil.NewMockDir(".git")},
-	})
+	root := t.TempDir()
+	createDir(t, filepath.Join(root, "not-a-project", "src"))
+	createGitRepo(t, filepath.Join(root, "real-project"))
 
-	projects := Discover(walkDir, []string{"/repos"})
+	projects := Discover([]string{root})
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project, got %d", len(projects))
@@ -72,17 +56,13 @@ func TestDiscover_IgnoresNonGitDirs(t *testing.T) {
 }
 
 func TestDiscover_RespectsDepthLimit(t *testing.T) {
-	walkDir := mockWalkDir([]walkEntry{
-		{path: "/repos", dirEntry: testutil.NewMockDir("repos")},
-		{path: "/repos/org", dirEntry: testutil.NewMockDir("org")},
-		{path: "/repos/org/project", dirEntry: testutil.NewMockDir("project")},
-		{path: "/repos/org/project/.git", dirEntry: testutil.NewMockDir(".git")},
-		{path: "/repos/org/deep/nested", dirEntry: testutil.NewMockDir("nested")},
-		{path: "/repos/org/deep/nested/project", dirEntry: testutil.NewMockDir("project")},
-		{path: "/repos/org/deep/nested/project/.git", dirEntry: testutil.NewMockDir(".git")},
-	})
+	root := t.TempDir()
+	// Depth 2: should be found (root/org/project/.git)
+	createGitRepo(t, filepath.Join(root, "org", "project"))
+	// Depth 4: too deep (root/org/deep/nested/project/.git)
+	createGitRepo(t, filepath.Join(root, "org", "deep", "nested", "project"))
 
-	projects := Discover(walkDir, []string{"/repos"})
+	projects := Discover([]string{root})
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project (depth limit), got %d", len(projects))
@@ -90,12 +70,11 @@ func TestDiscover_RespectsDepthLimit(t *testing.T) {
 }
 
 func TestDiscover_DeduplicatesProjects(t *testing.T) {
-	walkDir := mockWalkDir([]walkEntry{
-		{path: "/repos/project", dirEntry: testutil.NewMockDir("project")},
-		{path: "/repos/project/.git", dirEntry: testutil.NewMockDir(".git")},
-	})
+	root := t.TempDir()
+	createGitRepo(t, filepath.Join(root, "project"))
 
-	projects := Discover(walkDir, []string{"/repos", "/repos"})
+	// Same path twice
+	projects := Discover([]string{root, root})
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project (deduplicated), got %d", len(projects))
@@ -103,9 +82,7 @@ func TestDiscover_DeduplicatesProjects(t *testing.T) {
 }
 
 func TestDiscover_ReturnsEmptyForEmptyPaths(t *testing.T) {
-	walkDir := mockWalkDir([]walkEntry{})
-
-	projects := Discover(walkDir, []string{})
+	projects := Discover([]string{})
 
 	if len(projects) != 0 {
 		t.Errorf("expected 0 projects, got %d", len(projects))
@@ -113,12 +90,10 @@ func TestDiscover_ReturnsEmptyForEmptyPaths(t *testing.T) {
 }
 
 func TestDiscover_ReturnsEmptyForNoMatches(t *testing.T) {
-	walkDir := mockWalkDir([]walkEntry{
-		{path: "/repos", dirEntry: testutil.NewMockDir("repos")},
-		{path: "/repos/not-a-project", dirEntry: testutil.NewMockDir("not-a-project")},
-	})
+	root := t.TempDir()
+	createDir(t, filepath.Join(root, "not-a-project"))
 
-	projects := Discover(walkDir, []string{"/repos"})
+	projects := Discover([]string{root})
 
 	if len(projects) != 0 {
 		t.Errorf("expected 0 projects, got %d", len(projects))
@@ -126,13 +101,10 @@ func TestDiscover_ReturnsEmptyForNoMatches(t *testing.T) {
 }
 
 func TestDiscover_ExtractsProjectNameFromPath(t *testing.T) {
-	walkDir := mockWalkDir([]walkEntry{
-		{path: "/home/user/repos", dirEntry: testutil.NewMockDir("repos")},
-		{path: "/home/user/repos/my-project", dirEntry: testutil.NewMockDir("my-project")},
-		{path: "/home/user/repos/my-project/.git", dirEntry: testutil.NewMockDir(".git")},
-	})
+	root := t.TempDir()
+	createGitRepo(t, filepath.Join(root, "my-project"))
 
-	projects := Discover(walkDir, []string{"/home/user/repos"})
+	projects := Discover([]string{root})
 
 	if len(projects) != 1 {
 		t.Fatalf("expected 1 project, got %d", len(projects))
@@ -140,40 +112,44 @@ func TestDiscover_ExtractsProjectNameFromPath(t *testing.T) {
 	if projects[0].Name != "my-project" {
 		t.Errorf("expected name 'my-project', got %q", projects[0].Name)
 	}
-	if projects[0].Path != "/home/user/repos/my-project" {
-		t.Errorf("expected path '/home/user/repos/my-project', got %q", projects[0].Path)
+	if !strings.HasSuffix(projects[0].Path, "my-project") {
+		t.Errorf("expected path ending in 'my-project', got %q", projects[0].Path)
 	}
 }
 
 func TestDiscover_HandlesMultipleSearchPaths(t *testing.T) {
-	walkDir := mockWalkDir([]walkEntry{
-		{path: "/repos", dirEntry: testutil.NewMockDir("repos")},
-		{path: "/repos/project-a", dirEntry: testutil.NewMockDir("project-a")},
-		{path: "/repos/project-a/.git", dirEntry: testutil.NewMockDir(".git")},
-		{path: "/work", dirEntry: testutil.NewMockDir("work")},
-		{path: "/work/project-b", dirEntry: testutil.NewMockDir("project-b")},
-		{path: "/work/project-b/.git", dirEntry: testutil.NewMockDir(".git")},
-	})
+	root1 := t.TempDir()
+	root2 := t.TempDir()
+	createGitRepo(t, filepath.Join(root1, "project-a"))
+	createGitRepo(t, filepath.Join(root2, "project-b"))
 
-	projects := Discover(walkDir, []string{"/repos", "/work"})
+	projects := Discover([]string{root1, root2})
 
 	if len(projects) != 2 {
 		t.Errorf("expected 2 projects, got %d", len(projects))
 	}
 }
 
-func TestDiscover_ContinuesOnWalkError(t *testing.T) {
-	walkDir := mockWalkDir([]walkEntry{
-		{path: "/repos", dirEntry: testutil.NewMockDir("repos")},
-		{path: "/repos/unreadable", dirEntry: testutil.NewMockDir("unreadable"), err: errors.New("permission denied")},
-		{path: "/repos/project", dirEntry: testutil.NewMockDir("project")},
-		{path: "/repos/project/.git", dirEntry: testutil.NewMockDir(".git")},
-	})
+func TestDiscover_SkipsHiddenDirectories(t *testing.T) {
+	root := t.TempDir()
+	createGitRepo(t, filepath.Join(root, ".hidden", "secret-project"))
+	createGitRepo(t, filepath.Join(root, "visible-project"))
 
-	projects := Discover(walkDir, []string{"/repos"})
+	projects := Discover([]string{root})
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project, got %d", len(projects))
+	}
+	if projects[0].Name != "visible-project" {
+		t.Errorf("expected 'visible-project', got %q", projects[0].Name)
+	}
+}
+
+func TestDiscover_HandlesNonExistentPath(t *testing.T) {
+	projects := Discover([]string{"/nonexistent/path/that/does/not/exist"})
+
+	if len(projects) != 0 {
+		t.Errorf("expected 0 projects, got %d", len(projects))
 	}
 }
 
@@ -335,12 +311,12 @@ func TestFilter_FuzzyPrefersWordBoundaryMatches(t *testing.T) {
 	}
 }
 
-func TestFuzzyScore_ScoreIsNonNegative(t *testing.T) {
+func TestScore_ScoreIsNonNegative(t *testing.T) {
 	properties := gopter.NewProperties(nil)
 
 	properties.Property("score is always non-negative", prop.ForAll(
 		func(query, target string) bool {
-			return fuzzyScore(query, target) >= 0
+			return fuzzy.Score(query, target) >= 0
 		},
 		gen.AlphaString(),
 		gen.AlphaString(),
@@ -349,12 +325,12 @@ func TestFuzzyScore_ScoreIsNonNegative(t *testing.T) {
 	properties.TestingRun(t)
 }
 
-func TestFuzzyScore_EmptyQueryAlwaysMatches(t *testing.T) {
+func TestScore_EmptyQueryAlwaysMatches(t *testing.T) {
 	properties := gopter.NewProperties(nil)
 
 	properties.Property("empty query matches any target", prop.ForAll(
 		func(target string) bool {
-			return fuzzyScore("", target) > 0
+			return fuzzy.Score("", target) > 0
 		},
 		gen.AlphaString(),
 	))
@@ -362,13 +338,13 @@ func TestFuzzyScore_EmptyQueryAlwaysMatches(t *testing.T) {
 	properties.TestingRun(t)
 }
 
-func TestFuzzyScore_QueryLongerThanTargetNeverMatches(t *testing.T) {
+func TestScore_QueryLongerThanTargetNeverMatches(t *testing.T) {
 	properties := gopter.NewProperties(nil)
 
 	properties.Property("query longer than target returns 0", prop.ForAll(
 		func(query, target string) bool {
 			if len(query) > len(target) {
-				return fuzzyScore(query, target) == 0
+				return fuzzy.Score(query, target) == 0
 			}
 			return true
 		},
@@ -379,7 +355,7 @@ func TestFuzzyScore_QueryLongerThanTargetNeverMatches(t *testing.T) {
 	properties.TestingRun(t)
 }
 
-func TestFuzzyScore_ExactMatchAlwaysSucceeds(t *testing.T) {
+func TestScore_ExactMatchAlwaysSucceeds(t *testing.T) {
 	properties := gopter.NewProperties(nil)
 
 	properties.Property("identical strings always match", prop.ForAll(
@@ -387,7 +363,7 @@ func TestFuzzyScore_ExactMatchAlwaysSucceeds(t *testing.T) {
 			if len(s) == 0 {
 				return true
 			}
-			return fuzzyScore(s, s) > 0
+			return fuzzy.Score(s, s) > 0
 		},
 		gen.AlphaString(),
 	))
@@ -395,7 +371,7 @@ func TestFuzzyScore_ExactMatchAlwaysSucceeds(t *testing.T) {
 	properties.TestingRun(t)
 }
 
-func TestFuzzyScore_PrefixAlwaysMatches(t *testing.T) {
+func TestScore_PrefixAlwaysMatches(t *testing.T) {
 	properties := gopter.NewProperties(nil)
 
 	properties.Property("prefix of target always matches", prop.ForAll(
@@ -405,7 +381,7 @@ func TestFuzzyScore_PrefixAlwaysMatches(t *testing.T) {
 			}
 			prefixLen := max(len(target)/2, 1)
 			prefix := target[:prefixLen]
-			return fuzzyScore(strings.ToLower(prefix), strings.ToLower(target)) > 0
+			return fuzzy.Score(strings.ToLower(prefix), strings.ToLower(target)) > 0
 		},
 		gen.AlphaString(),
 	))
@@ -413,7 +389,7 @@ func TestFuzzyScore_PrefixAlwaysMatches(t *testing.T) {
 	properties.TestingRun(t)
 }
 
-func TestFuzzyScore_MatchesAllCharactersInOrder(t *testing.T) {
+func TestScore_MatchesAllCharactersInOrder(t *testing.T) {
 	tests := []struct {
 		query  string
 		target string
@@ -429,29 +405,29 @@ func TestFuzzyScore_MatchesAllCharactersInOrder(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		score := fuzzyScore(tt.query, tt.target)
+		score := fuzzy.Score(tt.query, tt.target)
 		matched := score > 0
 		if matched != tt.match {
-			t.Errorf("fuzzyScore(%q, %q): expected match=%v, got score=%d",
+			t.Errorf("fuzzy.Score(%q, %q): expected match=%v, got score=%d",
 				tt.query, tt.target, tt.match, score)
 		}
 	}
 }
 
-func TestFuzzyScore_ConsecutiveMatchesScoreHigher(t *testing.T) {
+func TestScore_ConsecutiveMatchesScoreHigher(t *testing.T) {
 	// "dev" in "dev-cli" (consecutive) should score higher than "dev" in "dXeXv"
-	consecutive := fuzzyScore("dev", "dev-cli")
-	scattered := fuzzyScore("dev", "dXeXv")
+	consecutive := fuzzy.Score("dev", "dev-cli")
+	scattered := fuzzy.Score("dev", "dXeXv")
 
 	if consecutive <= scattered {
 		t.Errorf("consecutive match should score higher: %d vs %d", consecutive, scattered)
 	}
 }
 
-func TestFuzzyScore_WordBoundaryMatchesScoreHigher(t *testing.T) {
+func TestScore_WordBoundaryMatchesScoreHigher(t *testing.T) {
 	// "dev" at start should score higher than "dev" in middle
-	atStart := fuzzyScore("dev", "dev-cli")
-	inMiddle := fuzzyScore("dev", "mydev")
+	atStart := fuzzy.Score("dev", "dev-cli")
+	inMiddle := fuzzy.Score("dev", "mydev")
 
 	if atStart <= inMiddle {
 		t.Errorf("word boundary match should score higher: %d vs %d", atStart, inMiddle)
@@ -563,4 +539,11 @@ func TestFilter_FilteringIsIdempotent(t *testing.T) {
 	))
 
 	properties.TestingRun(t)
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

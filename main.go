@@ -4,17 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"syscall"
 
 	"dev/internal/config"
+	"dev/internal/editor"
 	"dev/internal/hooks"
 	"dev/internal/projects"
 	"dev/internal/searchpath"
 	"dev/internal/tui"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // Set by ldflags build time
@@ -40,52 +36,40 @@ func main() {
 		os.Exit(0)
 	}
 
-	cfg := config.New()
+	cfg := config.Config{
+		Icons: config.Icons{
+			Dir: "",
+		},
+		Hooks: []hooks.Hook{
+			&hooks.TmuxHook{},
+			&hooks.ZellijHook{},
+		},
+	}
 
-	searchPaths := searchpath.Resolve(os.ReadDir, cfg.Args, cfg.DevPaths, cfg.HomeDir)
-	allProjects := projects.Discover(filepath.WalkDir, searchPaths)
+	resolvedPaths := searchpath.Resolve(flag.Args())
+	discoveredProjects := projects.Discover(searchpath.Expand(resolvedPaths))
 
-	if len(allProjects) == 0 {
+	if len(discoveredProjects) == 0 {
 		fmt.Fprintln(os.Stderr, "No projects found")
 		os.Exit(1)
 	}
 
-	program := tea.NewProgram(
-		tui.NewModel(allProjects, tui.DefaultKeyMap(), cfg.Icons),
-		tea.WithAltScreen(),
-	)
-
-	finalModel, err := program.Run()
+	selectedProject, err := tui.Run(discoveredProjects, tui.DefaultKeyMap(), cfg.Icons)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	m := finalModel.(tui.Model)
-	if m.Selected == "" {
+	if selectedProject.Path == "" {
 		os.Exit(0)
 	}
 
-	if err := os.Chdir(m.Selected); err != nil {
+	if err := os.Chdir(selectedProject.Path); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	hooks.Run(cfg.Hooks, filepath.Base(m.Selected))
+	hooks.RunHooks(cfg.Hooks, selectedProject.Name)
 
-	if cfg.Editor == "" {
-		fmt.Println(m.Selected)
-		os.Exit(0)
-	}
-
-	editorPath, err := exec.LookPath(cfg.Editor)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-
-	if err := syscall.Exec(editorPath, []string{cfg.Editor}, os.Environ()); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	editor.Open(selectedProject.Path)
 }

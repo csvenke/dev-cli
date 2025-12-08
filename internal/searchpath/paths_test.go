@@ -1,19 +1,13 @@
 package searchpath
 
 import (
-	"errors"
-	"io/fs"
+	"os"
+	"path/filepath"
 	"testing"
-
-	"dev/internal/testutil"
 )
 
 func TestResolve_PrefersArgs(t *testing.T) {
-	mockReadDir := func(path string) ([]fs.DirEntry, error) {
-		return nil, nil
-	}
-
-	result := Resolve(mockReadDir, []string{"/custom/path", "/another/path"}, "/should/be/ignored", "/home/user")
+	result := Resolve([]string{"/custom/path", "/another/path"})
 
 	if len(result) != 2 {
 		t.Errorf("expected 2 paths, got %d", len(result))
@@ -21,14 +15,15 @@ func TestResolve_PrefersArgs(t *testing.T) {
 	if result[0] != "/custom/path" {
 		t.Errorf("expected '/custom/path', got %q", result[0])
 	}
+	if result[1] != "/another/path" {
+		t.Errorf("expected '/another/path', got %q", result[1])
+	}
 }
 
 func TestResolve_FallsBackToDevPaths(t *testing.T) {
-	mockReadDir := func(path string) ([]fs.DirEntry, error) {
-		return nil, nil
-	}
+	t.Setenv("DEV_PATHS", "/repos /work /projects")
 
-	result := Resolve(mockReadDir, []string{}, "/repos /work /projects", "/home/user")
+	result := Resolve([]string{})
 
 	if len(result) != 3 {
 		t.Errorf("expected 3 paths, got %d", len(result))
@@ -41,99 +36,105 @@ func TestResolve_FallsBackToDevPaths(t *testing.T) {
 	}
 }
 
-func TestResolve_FallsBackToHomeSubdirs(t *testing.T) {
-	mockReadDir := func(path string) ([]fs.DirEntry, error) {
-		return []fs.DirEntry{
-			testutil.NewMockDir("repos"),
-			testutil.NewMockDir("work"),
-			testutil.NewMockFile("file.txt"),
-		}, nil
+func TestResolve_FallsBackToHome(t *testing.T) {
+	t.Setenv("DEV_PATHS", "")
+
+	// Create a temp dir to act as home
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	result := Resolve([]string{})
+
+	if len(result) != 1 {
+		t.Errorf("expected 1 path, got %d: %v", len(result), result)
 	}
-
-	result := Resolve(mockReadDir, []string{}, "", "/home/user")
-
-	if len(result) != 2 {
-		t.Errorf("expected 2 paths (dirs only), got %d", len(result))
+	if result[0] != tempHome {
+		t.Errorf("expected path to be %q, got %q", tempHome, result[0])
 	}
 }
 
-func TestResolve_ExcludesHiddenDirs(t *testing.T) {
-	mockReadDir := func(path string) ([]fs.DirEntry, error) {
-		return []fs.DirEntry{
-			testutil.NewMockDir(".config"),
-			testutil.NewMockDir(".local"),
-			testutil.NewMockDir("repos"),
-			testutil.NewMockDir("Documents"),
-		}, nil
+func TestDiscover_FindsSubdirs(t *testing.T) {
+	tempHome := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(tempHome, "repos"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tempHome, "work"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Create a file (should be ignored)
+	if err := os.WriteFile(filepath.Join(tempHome, "file.txt"), []byte("test"), 0644); err != nil {
+		t.Fatal(err)
 	}
 
-	result := Resolve(mockReadDir, []string{}, "", "/home/user")
+	result := Expand([]string{tempHome})
 
 	if len(result) != 2 {
-		t.Errorf("expected 2 paths (non-hidden), got %d", len(result))
+		t.Errorf("expected 2 paths (dirs only), got %d: %v", len(result), result)
+	}
+}
+
+func TestDiscover_ExcludesHiddenDirs(t *testing.T) {
+	tempHome := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(tempHome, ".config"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tempHome, ".local"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tempHome, "repos"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tempHome, "Documents"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	result := Expand([]string{tempHome})
+
+	if len(result) != 2 {
+		t.Errorf("expected 2 paths (non-hidden), got %d: %v", len(result), result)
 	}
 	for _, path := range result {
-		if path == "/home/user/.config" || path == "/home/user/.local" {
+		if filepath.Base(path) == ".config" || filepath.Base(path) == ".local" {
 			t.Errorf("hidden directory should not be included: %q", path)
 		}
 	}
 }
 
-func TestResolve_ReturnsNilOnEmptyHomeDir(t *testing.T) {
-	mockReadDir := func(path string) ([]fs.DirEntry, error) {
-		return nil, nil
-	}
+func TestDiscover_ReturnsEmptyOnNoSubdirs(t *testing.T) {
+	tempHome := t.TempDir()
 
-	result := Resolve(mockReadDir, []string{}, "", "")
+	result := Expand([]string{tempHome})
 
-	if result != nil {
-		t.Errorf("expected nil result on empty home dir, got %v", result)
+	if len(result) != 0 {
+		t.Errorf("expected empty result, got %v", result)
 	}
 }
 
-func TestResolve_HandlesReadDirError(t *testing.T) {
-	mockReadDir := func(path string) ([]fs.DirEntry, error) {
-		return nil, errors.New("permission denied")
+func TestDiscover_BuildsFullPaths(t *testing.T) {
+	tempHome := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(tempHome, "repos"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tempHome, "work"), 0755); err != nil {
+		t.Fatal(err)
 	}
 
-	result := Resolve(mockReadDir, []string{}, "", "/home/user")
+	result := Expand([]string{tempHome})
 
-	if result != nil {
-		t.Errorf("expected nil result on read dir error, got %v", result)
-	}
-}
-
-func TestResolve_EmptyDevPathsReturnsHomeSubdirs(t *testing.T) {
-	mockReadDir := func(path string) ([]fs.DirEntry, error) {
-		return []fs.DirEntry{
-			testutil.NewMockDir("repos"),
-		}, nil
+	if len(result) != 2 {
+		t.Fatalf("expected 2 paths, got %d: %v", len(result), result)
 	}
 
-	result := Resolve(mockReadDir, []string{}, "", "/home/user")
-
-	if len(result) != 1 {
-		t.Errorf("expected 1 path, got %d", len(result))
-	}
-	if result[0] != "/home/user/repos" {
-		t.Errorf("expected '/home/user/repos', got %q", result[0])
-	}
-}
-
-func TestResolve_BuildsFullPaths(t *testing.T) {
-	mockReadDir := func(path string) ([]fs.DirEntry, error) {
-		return []fs.DirEntry{
-			testutil.NewMockDir("repos"),
-			testutil.NewMockDir("work"),
-		}, nil
-	}
-
-	result := Resolve(mockReadDir, []string{}, "", "/home/user")
-
-	expected := []string{"/home/user/repos", "/home/user/work"}
-	for i, exp := range expected {
-		if result[i] != exp {
-			t.Errorf("expected %q at index %d, got %q", exp, i, result[i])
+	// Check that paths are full paths under home
+	for _, p := range result {
+		if !filepath.IsAbs(p) {
+			t.Errorf("expected absolute path, got %q", p)
+		}
+		if filepath.Dir(p) != tempHome {
+			t.Errorf("expected parent to be %q, got %q", tempHome, filepath.Dir(p))
 		}
 	}
 }
