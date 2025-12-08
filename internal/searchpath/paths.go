@@ -1,33 +1,44 @@
 package searchpath
 
 import (
-	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 )
 
-func Resolve(readDir func(string) ([]fs.DirEntry, error), args []string, devPaths string, homeDir string) []string {
+func Resolve(args []string) []string {
 	if len(args) > 0 {
 		return args
 	}
 
-	if devPaths != "" {
-		return strings.Fields(devPaths)
+	devPaths := strings.Fields(os.Getenv("DEV_PATHS"))
+	if len(devPaths) > 0 {
+		return devPaths
 	}
 
-	if homeDir == "" {
-		return nil
-	}
-
-	entries, err := readDir(homeDir)
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil
+		return []string{}
+	}
+
+	return []string{homeDir}
+}
+
+func Expand(searchPaths []string) []string {
+	if len(searchPaths) == 0 {
+		return []string{}
 	}
 
 	var paths []string
-	for _, entry := range entries {
-		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
-			paths = append(paths, filepath.Join(homeDir, entry.Name()))
+	for _, p := range searchPaths {
+		entries, err := os.ReadDir(p)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+				paths = append(paths, filepath.Join(p, entry.Name()))
+			}
 		}
 	}
 	return paths
