@@ -100,6 +100,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case key.Matches(msg, m.keys.ClearQuery):
+			if len(m.query) > 0 {
+				m.query = ""
+				m.filtered = m.projects
+				m.cursor = 0
+			}
+			return m, nil
+
 		default:
 			if len(msg.String()) == 1 {
 				m.query += msg.String()

@@ -3,11 +3,12 @@ package tui
 import "github.com/charmbracelet/bubbles/key"
 
 type KeyMap struct {
-	NextItem  key.Binding
-	PrevItem  key.Binding
-	Select    key.Binding
-	Cancel    key.Binding
-	Backspace key.Binding
+	NextItem   key.Binding
+	PrevItem   key.Binding
+	Select     key.Binding
+	Cancel     key.Binding
+	Backspace  key.Binding
+	ClearQuery key.Binding
 }
 
 func DefaultKeyMap() KeyMap {
@@ -31,6 +32,10 @@ func DefaultKeyMap() KeyMap {
 		Backspace: key.NewBinding(
 			key.WithKeys("backspace"),
 			key.WithHelp("backspace", "delete"),
+		),
+		ClearQuery: key.NewBinding(
+			key.WithKeys("ctrl+c"),
+			key.WithHelp("ctrl+c", "clear query"),
 		),
 	}
 }
