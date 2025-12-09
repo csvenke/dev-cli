@@ -5,16 +5,12 @@ import (
 	"fmt"
 	"os"
 
-	"dev/internal/config"
-	"dev/internal/editor"
+	"dev/internal/app"
 	"dev/internal/filesystem"
 	"dev/internal/hooks"
-	"dev/internal/projects"
-	"dev/internal/searchpath"
 	"dev/internal/tui"
 )
 
-// Set by ldflags build time
 var version string
 
 func main() {
@@ -37,52 +33,18 @@ func main() {
 		os.Exit(0)
 	}
 
-	cfg := config.Config{
-		Icons: config.Icons{
+	cfg := app.Config{
+		Icons: tui.Icons{
 			Dir: "",
 		},
-		Hooks: []hooks.Hook{
-			&hooks.TmuxHook{},
-			&hooks.ZellijHook{},
-		},
+		Hooks: hooks.Default,
 	}
 	fs := &filesystem.RealFileSystem{}
 
-	resolvedPaths := searchpath.Resolve(flag.Args())
-
-	expandedPaths, err := searchpath.Expand(fs, resolvedPaths)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-	}
-
-	discoveredProjects, err := projects.Discover(fs, expandedPaths)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-	}
-
-	if len(discoveredProjects) == 0 {
-		fmt.Fprintln(os.Stderr, "No projects found")
-		os.Exit(1)
-	}
-
-	model := tui.NewModel(discoveredProjects, tui.DefaultKeyMap(), cfg.Icons)
-
-	selectedProject, err := tui.Run(model)
+	_, err := app.Run(flag.Args(), cfg, fs).Get()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-
-	if selectedProject.Path == "" {
-		os.Exit(0)
-	}
-
-	if err := os.Chdir(selectedProject.Path); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-
-	hooks.RunHooks(cfg.Hooks, selectedProject.Name)
-
-	editor.Open(selectedProject.Path)
+	os.Exit(0)
 }

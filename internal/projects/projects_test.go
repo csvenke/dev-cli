@@ -6,11 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"dev/internal/fuzzy"
-
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
+	"github.com/samber/mo"
 )
 
 type mockDirEntry struct {
@@ -42,11 +41,15 @@ type mockFileSystem struct {
 	readErr error
 }
 
-func (m *mockFileSystem) ReadDir(path string) ([]os.DirEntry, error) {
+func (m *mockFileSystem) ReadDir(path string) mo.Result[[]os.DirEntry] {
 	if m.readErr != nil {
-		return nil, m.readErr
+		return mo.Err[[]os.DirEntry](m.readErr)
 	}
-	return m.dirs[path], nil
+	return mo.Ok(m.dirs[path])
+}
+
+func (m *mockFileSystem) Chdir(path string) mo.Result[string] {
+	return mo.Ok(path)
 }
 
 func TestDiscover_DiscoversGitRepos(t *testing.T) {
@@ -60,10 +63,11 @@ func TestDiscover_DiscoversGitRepos(t *testing.T) {
 			"/home/user/project-b": {&mockDirEntry{name: ".git", isDir: true}},
 		},
 	}
-	projects, err := Discover(fs, []string{"/home/user"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	result := Discover(fs, []string{"/home/user"})
+	if result.IsError() {
+		t.Fatalf("unexpected error: %v", result.Error())
 	}
+	projects := result.MustGet()
 
 	if len(projects) != 2 {
 		t.Errorf("expected 2 projects, got %d", len(projects))
@@ -81,10 +85,11 @@ func TestDiscover_IgnoresNonGitDirs(t *testing.T) {
 			"/home/user/real-project":  {&mockDirEntry{name: ".git", isDir: true}},
 		},
 	}
-	projects, err := Discover(fs, []string{"/home/user"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	result := Discover(fs, []string{"/home/user"})
+	if result.IsError() {
+		t.Fatalf("unexpected error: %v", result.Error())
 	}
+	projects := result.MustGet()
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project, got %d", len(projects))
@@ -114,10 +119,11 @@ func TestDiscover_RespectsDepthLimit(t *testing.T) {
 			"/org/deep/nested/project": {&mockDirEntry{name: ".git", isDir: true}},
 		},
 	}
-	projects, err := Discover(fs, []string{"/"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	result := Discover(fs, []string{"/"})
+	if result.IsError() {
+		t.Fatalf("unexpected error: %v", result.Error())
 	}
+	projects := result.MustGet()
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project (depth limit), got %d", len(projects))
@@ -133,10 +139,11 @@ func TestDiscover_DeduplicatesProjects(t *testing.T) {
 			"/home/user/project": {&mockDirEntry{name: ".git", isDir: true}},
 		},
 	}
-	projects, err := Discover(fs, []string{"/home/user", "/home/user"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	result := Discover(fs, []string{"/home/user", "/home/user"})
+	if result.IsError() {
+		t.Fatalf("unexpected error: %v", result.Error())
 	}
+	projects := result.MustGet()
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project (deduplicated), got %d", len(projects))
@@ -145,10 +152,11 @@ func TestDiscover_DeduplicatesProjects(t *testing.T) {
 
 func TestDiscover_ReturnsEmptyForEmptyPaths(t *testing.T) {
 	fs := &mockFileSystem{}
-	projects, err := Discover(fs, []string{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	result := Discover(fs, []string{})
+	if result.IsError() {
+		t.Fatalf("unexpected error: %v", result.Error())
 	}
+	projects := result.MustGet()
 
 	if len(projects) != 0 {
 		t.Errorf("expected 0 projects, got %d", len(projects))
@@ -163,10 +171,11 @@ func TestDiscover_ReturnsEmptyForNoMatches(t *testing.T) {
 			},
 		},
 	}
-	projects, err := Discover(fs, []string{"/home/user"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	result := Discover(fs, []string{"/home/user"})
+	if result.IsError() {
+		t.Fatalf("unexpected error: %v", result.Error())
 	}
+	projects := result.MustGet()
 
 	if len(projects) != 0 {
 		t.Errorf("expected 0 projects, got %d", len(projects))
@@ -182,10 +191,11 @@ func TestDiscover_ExtractsProjectNameFromPath(t *testing.T) {
 			"/home/user/my-project": {&mockDirEntry{name: ".git", isDir: true}},
 		},
 	}
-	projects, err := Discover(fs, []string{"/home/user"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	result := Discover(fs, []string{"/home/user"})
+	if result.IsError() {
+		t.Fatalf("unexpected error: %v", result.Error())
 	}
+	projects := result.MustGet()
 
 	if len(projects) != 1 {
 		t.Fatalf("expected 1 project, got %d", len(projects))
@@ -211,10 +221,11 @@ func TestDiscover_HandlesMultipleSearchPaths(t *testing.T) {
 			"/root2/project-b": {&mockDirEntry{name: ".git", isDir: true}},
 		},
 	}
-	projects, err := Discover(fs, []string{"/root1", "/root2"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	result := Discover(fs, []string{"/root1", "/root2"})
+	if result.IsError() {
+		t.Fatalf("unexpected error: %v", result.Error())
 	}
+	projects := result.MustGet()
 
 	if len(projects) != 2 {
 		t.Errorf("expected 2 projects, got %d", len(projects))
@@ -235,10 +246,11 @@ func TestDiscover_SkipsHiddenDirectories(t *testing.T) {
 			"/home/user/visible-project":        {&mockDirEntry{name: ".git", isDir: true}},
 		},
 	}
-	projects, err := Discover(fs, []string{"/home/user"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	result := Discover(fs, []string{"/home/user"})
+	if result.IsError() {
+		t.Fatalf("unexpected error: %v", result.Error())
 	}
+	projects := result.MustGet()
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project, got %d", len(projects))
@@ -250,10 +262,11 @@ func TestDiscover_SkipsHiddenDirectories(t *testing.T) {
 
 func TestDiscover_HandlesNonExistentPath(t *testing.T) {
 	fs := &mockFileSystem{}
-	projects, err := Discover(fs, []string{"/nonexistent/path/that/does/not/exist"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	result := Discover(fs, []string{"/nonexistent/path/that/does/not/exist"})
+	if result.IsError() {
+		t.Fatalf("unexpected error: %v", result.Error())
 	}
+	projects := result.MustGet()
 
 	if len(projects) != 0 {
 		t.Errorf("expected 0 projects, got %d", len(projects))
@@ -264,10 +277,11 @@ func TestDiscover_ReturnsError(t *testing.T) {
 	fs := &mockFileSystem{
 		readErr: errors.New("read error"),
 	}
-	_, err := Discover(fs, []string{"/home/user"})
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	result := Discover(fs, []string{"/home/user"})
+	if result.IsOk() {
+		t.Fatal("expected error, got ok")
 	}
+	err := result.Error()
 	if err.Error() != "read error" {
 		t.Errorf("expected 'read error', got %q", err.Error())
 	}
@@ -436,7 +450,7 @@ func TestScore_ScoreIsNonNegative(t *testing.T) {
 
 	properties.Property("score is always non-negative", prop.ForAll(
 		func(query, target string) bool {
-			return fuzzy.Score(query, target) >= 0
+			return FuzzyScore(query, target) >= 0
 		},
 		gen.AlphaString(),
 		gen.AlphaString(),
@@ -450,7 +464,7 @@ func TestScore_EmptyQueryAlwaysMatches(t *testing.T) {
 
 	properties.Property("empty query matches any target", prop.ForAll(
 		func(target string) bool {
-			return fuzzy.Score("", target) > 0
+			return FuzzyScore("", target) > 0
 		},
 		gen.AlphaString(),
 	))
@@ -464,7 +478,7 @@ func TestScore_QueryLongerThanTargetNeverMatches(t *testing.T) {
 	properties.Property("query longer than target returns 0", prop.ForAll(
 		func(query, target string) bool {
 			if len(query) > len(target) {
-				return fuzzy.Score(query, target) == 0
+				return FuzzyScore(query, target) == 0
 			}
 			return true
 		},
@@ -483,7 +497,7 @@ func TestScore_ExactMatchAlwaysSucceeds(t *testing.T) {
 			if len(s) == 0 {
 				return true
 			}
-			return fuzzy.Score(s, s) > 0
+			return FuzzyScore(s, s) > 0
 		},
 		gen.AlphaString(),
 	))
@@ -501,7 +515,7 @@ func TestScore_PrefixAlwaysMatches(t *testing.T) {
 			}
 			prefixLen := max(len(target)/2, 1)
 			prefix := target[:prefixLen]
-			return fuzzy.Score(strings.ToLower(prefix), strings.ToLower(target)) > 0
+			return FuzzyScore(strings.ToLower(prefix), strings.ToLower(target)) > 0
 		},
 		gen.AlphaString(),
 	))
@@ -525,10 +539,10 @@ func TestScore_MatchesAllCharactersInOrder(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		score := fuzzy.Score(tt.query, tt.target)
+		score := FuzzyScore(tt.query, tt.target)
 		matched := score > 0
 		if matched != tt.match {
-			t.Errorf("fuzzy.Score(%q, %q): expected match=%v, got score=%d",
+			t.Errorf("FuzzyScore(%q, %q): expected match=%v, got score=%d",
 				tt.query, tt.target, tt.match, score)
 		}
 	}
@@ -536,8 +550,8 @@ func TestScore_MatchesAllCharactersInOrder(t *testing.T) {
 
 func TestScore_ConsecutiveMatchesScoreHigher(t *testing.T) {
 	// "dev" in "dev-cli" (consecutive) should score higher than "dev" in "dXeXv"
-	consecutive := fuzzy.Score("dev", "dev-cli")
-	scattered := fuzzy.Score("dev", "dXeXv")
+	consecutive := FuzzyScore("dev", "dev-cli")
+	scattered := FuzzyScore("dev", "dXeXv")
 
 	if consecutive <= scattered {
 		t.Errorf("consecutive match should score higher: %d vs %d", consecutive, scattered)
@@ -546,8 +560,8 @@ func TestScore_ConsecutiveMatchesScoreHigher(t *testing.T) {
 
 func TestScore_WordBoundaryMatchesScoreHigher(t *testing.T) {
 	// "dev" at start should score higher than "dev" in middle
-	atStart := fuzzy.Score("dev", "dev-cli")
-	inMiddle := fuzzy.Score("dev", "mydev")
+	atStart := FuzzyScore("dev", "dev-cli")
+	inMiddle := FuzzyScore("dev", "mydev")
 
 	if atStart <= inMiddle {
 		t.Errorf("word boundary match should score higher: %d vs %d", atStart, inMiddle)

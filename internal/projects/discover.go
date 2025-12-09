@@ -1,24 +1,30 @@
 package projects
 
 import (
-	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"dev/internal/filesystem"
+
+	"github.com/samber/lo"
+	"github.com/samber/mo"
 )
 
-// Project represents a discovered git repository.
 type Project struct {
 	Name string
 	Path string
 }
 
-// Discover finds all git repositories within the given search paths.
-// It walks directories in parallel and deduplicates results.
-func Discover(fs filesystem.FileSystem, searchPaths []string) ([]Project, error) {
+func Discover(fs filesystem.FileSystem, args []string) mo.Result[[]Project] {
+	searchPaths, err := expandPaths(fs, resolvePaths(args)).Get()
+	if err != nil {
+		return mo.Err[[]Project](err)
+	}
+
 	if len(searchPaths) == 0 {
-		return []Project{}, nil
+		return mo.Ok([]Project{})
 	}
 
 	var wg sync.WaitGroup
@@ -39,7 +45,6 @@ func Discover(fs filesystem.FileSystem, searchPaths []string) ([]Project, error)
 		close(errCh)
 	}()
 
-	// Collect and deduplicate
 	seen := make(map[string]struct{})
 	result := make([]Project, 0, 64)
 	for p := range resultCh {
@@ -48,16 +53,77 @@ func Discover(fs filesystem.FileSystem, searchPaths []string) ([]Project, error)
 			result = append(result, p)
 		}
 	}
+
 	var errs []error
 	for err := range errCh {
 		errs = append(errs, err)
 	}
 
-	if len(errs) > 0 {
-		return result, errors.Join(errs...)
+	if len(result) == 0 && len(errs) > 0 {
+		return mo.Err[[]Project](errs[0])
 	}
 
-	return result, nil
+	return mo.Ok(result)
+}
+
+func resolvePaths(args []string) []string {
+	if len(args) > 0 {
+		return args
+	}
+
+	devPaths := strings.Fields(os.Getenv("DEV_PATHS"))
+	if len(devPaths) > 0 {
+		return devPaths
+	}
+
+	homeResult := mo.TupleToResult(os.UserHomeDir())
+	if homeResult.IsOk() {
+		return []string{homeResult.MustGet()}
+	}
+	return []string{}
+}
+
+func expandPaths(fs filesystem.FileSystem, searchPaths []string) mo.Result[[]string] {
+	if len(searchPaths) == 0 {
+		return mo.Ok([]string{})
+	}
+
+	results := lo.Map(searchPaths, func(p string, _ int) mo.Result[[]string] {
+		return expandPath(fs, p)
+	})
+
+	paths := lo.FlatMap(results, func(r mo.Result[[]string], _ int) []string {
+		return r.OrElse([]string{})
+	})
+
+	errors := lo.FilterMap(results, func(r mo.Result[[]string], _ int) (error, bool) {
+		if r.IsError() {
+			return r.Error(), true
+		}
+		return nil, false
+	})
+
+	if len(paths) == 0 && len(errors) > 0 {
+		return mo.Err[[]string](errors[0])
+	}
+
+	return mo.Ok(paths)
+}
+
+func expandPath(fs filesystem.FileSystem, searchPath string) mo.Result[[]string] {
+	entries, err := fs.ReadDir(searchPath).Get()
+	if err != nil {
+		return mo.Err[[]string](err)
+	}
+
+	paths := lo.FilterMap(entries, func(entry os.DirEntry, _ int) (string, bool) {
+		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+			return filepath.Join(searchPath, entry.Name()), true
+		}
+		return "", false
+	})
+
+	return mo.Ok(paths)
 }
 
 func walkRecursive(fs filesystem.FileSystem, dir string, depth int, out chan<- Project, errCh chan<- error) {
@@ -65,7 +131,7 @@ func walkRecursive(fs filesystem.FileSystem, dir string, depth int, out chan<- P
 		return
 	}
 
-	entries, err := fs.ReadDir(dir)
+	entries, err := fs.ReadDir(dir).Get()
 	if err != nil {
 		errCh <- err
 		return
@@ -78,21 +144,18 @@ func walkRecursive(fs filesystem.FileSystem, dir string, depth int, out chan<- P
 
 		name := entry.Name()
 
-		// Found a git repo
 		if name == ".git" {
 			out <- Project{
 				Name: filepath.Base(dir),
 				Path: dir,
 			}
-			return // Don't descend further
+			return
 		}
 
-		// Skip hidden directories
 		if len(name) > 0 && name[0] == '.' {
 			continue
 		}
 
-		// Recurse
 		walkRecursive(fs, filepath.Join(dir, name), depth+1, out, errCh)
 	}
 }
