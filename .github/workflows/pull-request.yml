@@ -4,6 +4,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  pull-requests: write
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -34,8 +37,55 @@ jobs:
           name: dev-cli-${{ github.sha }}
           path: dist/
 
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - name: checkout pr branch
+        uses: actions/checkout@v4
+        with:
+          path: "pr"
+
+      - name: Run benchmarks on PR
+        run: |
+          echo "Running benchmarks on PR commit ${{ github.event.pull_request.head.sha }}"
+          cd pr
+          nix run .#benchmark > ../pr.bench
+
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: "base"
+
+      - name: Run benchmarks on base
+        run: |
+          echo "Running benchmarks on base commit ${{ github.event.pull_request.base.sha }}"
+          cd base
+          nix run .#benchmark > ../base.bench
+
+      - name: Compare benchmarks
+        id: compare
+        run: |
+          echo "Comparing benchmarks"
+          nix-shell -p goperf --run "benchstat base.bench pr.bench" > comparison.txt
+          echo "COMPARISON<<EOF" >> $GITHUB_OUTPUT
+          echo '```' >> $GITHUB_OUTPUT
+          cat comparison.txt >> $GITHUB_OUTPUT
+          echo '```' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post benchmark comment
+        uses: peter-evans/create-or-update-comment@v2
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## Benchmark comparison
+            ${{ steps.compare.outputs.COMPARISON }}
+
   merge-ready:
     runs-on: ubuntu-latest
-    needs: [lint, test, build]
+    needs: [lint, test, build, benchmark]
     steps:
       - run: echo "LGTM"
