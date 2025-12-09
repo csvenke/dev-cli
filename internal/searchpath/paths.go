@@ -1,9 +1,12 @@
 package searchpath
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"dev/internal/filesystem"
 )
 
 func Resolve(args []string) []string {
@@ -24,15 +27,17 @@ func Resolve(args []string) []string {
 	return []string{homeDir}
 }
 
-func Expand(searchPaths []string) []string {
+func Expand(fs filesystem.FileSystem, searchPaths []string) ([]string, error) {
 	if len(searchPaths) == 0 {
-		return []string{}
+		return []string{}, nil
 	}
 
 	var paths []string
+	var errs []error
 	for _, p := range searchPaths {
-		entries, err := os.ReadDir(p)
+		entries, err := fs.ReadDir(p)
 		if err != nil {
+			errs = append(errs, err)
 			continue
 		}
 		for _, entry := range entries {
@@ -41,5 +46,8 @@ func Expand(searchPaths []string) []string {
 			}
 		}
 	}
-	return paths
+	if len(errs) > 0 {
+		return paths, errors.Join(errs...)
+	}
+	return paths, nil
 }

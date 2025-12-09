@@ -1,39 +1,69 @@
 package projects
 
 import (
+	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"dev/internal/fuzzy"
+
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
 )
 
-// Helper to create a git repo in temp dir
-func createGitRepo(t *testing.T, path string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Join(path, ".git"), 0o755); err != nil {
-		t.Fatalf("failed to create git repo at %s: %v", path, err)
-	}
+type mockDirEntry struct {
+	name  string
+	isDir bool
 }
 
-// Helper to create a regular directory
-func createDir(t *testing.T, path string) {
-	t.Helper()
-	if err := os.MkdirAll(path, 0o755); err != nil {
-		t.Fatalf("failed to create dir at %s: %v", path, err)
+func (m *mockDirEntry) Name() string {
+	return m.name
+}
+
+func (m *mockDirEntry) IsDir() bool {
+	return m.isDir
+}
+
+func (m *mockDirEntry) Type() os.FileMode {
+	if m.isDir {
+		return os.ModeDir
 	}
+	return 0
+}
+
+func (m *mockDirEntry) Info() (os.FileInfo, error) {
+	return nil, nil
+}
+
+type mockFileSystem struct {
+	dirs    map[string][]os.DirEntry
+	readErr error
+}
+
+func (m *mockFileSystem) ReadDir(path string) ([]os.DirEntry, error) {
+	if m.readErr != nil {
+		return nil, m.readErr
+	}
+	return m.dirs[path], nil
 }
 
 func TestDiscover_DiscoversGitRepos(t *testing.T) {
-	root := t.TempDir()
-	createGitRepo(t, filepath.Join(root, "project-a"))
-	createGitRepo(t, filepath.Join(root, "project-b"))
-
-	projects := Discover([]string{root})
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/home/user": {
+				&mockDirEntry{name: "project-a", isDir: true},
+				&mockDirEntry{name: "project-b", isDir: true},
+			},
+			"/home/user/project-a": {&mockDirEntry{name: ".git", isDir: true}},
+			"/home/user/project-b": {&mockDirEntry{name: ".git", isDir: true}},
+		},
+	}
+	projects, err := Discover(fs, []string{"/home/user"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(projects) != 2 {
 		t.Errorf("expected 2 projects, got %d", len(projects))
@@ -41,11 +71,20 @@ func TestDiscover_DiscoversGitRepos(t *testing.T) {
 }
 
 func TestDiscover_IgnoresNonGitDirs(t *testing.T) {
-	root := t.TempDir()
-	createDir(t, filepath.Join(root, "not-a-project", "src"))
-	createGitRepo(t, filepath.Join(root, "real-project"))
-
-	projects := Discover([]string{root})
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/home/user": {
+				&mockDirEntry{name: "not-a-project", isDir: true},
+				&mockDirEntry{name: "real-project", isDir: true},
+			},
+			"/home/user/not-a-project": {},
+			"/home/user/real-project":  {&mockDirEntry{name: ".git", isDir: true}},
+		},
+	}
+	projects, err := Discover(fs, []string{"/home/user"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project, got %d", len(projects))
@@ -56,13 +95,29 @@ func TestDiscover_IgnoresNonGitDirs(t *testing.T) {
 }
 
 func TestDiscover_RespectsDepthLimit(t *testing.T) {
-	root := t.TempDir()
-	// Depth 2: should be found (root/org/project/.git)
-	createGitRepo(t, filepath.Join(root, "org", "project"))
-	// Depth 4: too deep (root/org/deep/nested/project/.git)
-	createGitRepo(t, filepath.Join(root, "org", "deep", "nested", "project"))
-
-	projects := Discover([]string{root})
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/": {
+				&mockDirEntry{name: "org", isDir: true},
+			},
+			"/org": {
+				&mockDirEntry{name: "project", isDir: true},
+				&mockDirEntry{name: "deep", isDir: true},
+			},
+			"/org/project": {&mockDirEntry{name: ".git", isDir: true}},
+			"/org/deep": {
+				&mockDirEntry{name: "nested", isDir: true},
+			},
+			"/org/deep/nested": {
+				&mockDirEntry{name: "project", isDir: true},
+			},
+			"/org/deep/nested/project": {&mockDirEntry{name: ".git", isDir: true}},
+		},
+	}
+	projects, err := Discover(fs, []string{"/"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project (depth limit), got %d", len(projects))
@@ -70,11 +125,18 @@ func TestDiscover_RespectsDepthLimit(t *testing.T) {
 }
 
 func TestDiscover_DeduplicatesProjects(t *testing.T) {
-	root := t.TempDir()
-	createGitRepo(t, filepath.Join(root, "project"))
-
-	// Same path twice
-	projects := Discover([]string{root, root})
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/home/user": {
+				&mockDirEntry{name: "project", isDir: true},
+			},
+			"/home/user/project": {&mockDirEntry{name: ".git", isDir: true}},
+		},
+	}
+	projects, err := Discover(fs, []string{"/home/user", "/home/user"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project (deduplicated), got %d", len(projects))
@@ -82,7 +144,11 @@ func TestDiscover_DeduplicatesProjects(t *testing.T) {
 }
 
 func TestDiscover_ReturnsEmptyForEmptyPaths(t *testing.T) {
-	projects := Discover([]string{})
+	fs := &mockFileSystem{}
+	projects, err := Discover(fs, []string{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(projects) != 0 {
 		t.Errorf("expected 0 projects, got %d", len(projects))
@@ -90,10 +156,17 @@ func TestDiscover_ReturnsEmptyForEmptyPaths(t *testing.T) {
 }
 
 func TestDiscover_ReturnsEmptyForNoMatches(t *testing.T) {
-	root := t.TempDir()
-	createDir(t, filepath.Join(root, "not-a-project"))
-
-	projects := Discover([]string{root})
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/home/user": {
+				&mockDirEntry{name: "not-a-project", isDir: true},
+			},
+		},
+	}
+	projects, err := Discover(fs, []string{"/home/user"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(projects) != 0 {
 		t.Errorf("expected 0 projects, got %d", len(projects))
@@ -101,10 +174,18 @@ func TestDiscover_ReturnsEmptyForNoMatches(t *testing.T) {
 }
 
 func TestDiscover_ExtractsProjectNameFromPath(t *testing.T) {
-	root := t.TempDir()
-	createGitRepo(t, filepath.Join(root, "my-project"))
-
-	projects := Discover([]string{root})
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/home/user": {
+				&mockDirEntry{name: "my-project", isDir: true},
+			},
+			"/home/user/my-project": {&mockDirEntry{name: ".git", isDir: true}},
+		},
+	}
+	projects, err := Discover(fs, []string{"/home/user"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(projects) != 1 {
 		t.Fatalf("expected 1 project, got %d", len(projects))
@@ -112,18 +193,28 @@ func TestDiscover_ExtractsProjectNameFromPath(t *testing.T) {
 	if projects[0].Name != "my-project" {
 		t.Errorf("expected name 'my-project', got %q", projects[0].Name)
 	}
-	if !strings.HasSuffix(projects[0].Path, "my-project") {
-		t.Errorf("expected path ending in 'my-project', got %q", projects[0].Path)
+	if projects[0].Path != "/home/user/my-project" {
+		t.Errorf("expected path '/home/user/my-project', got %q", projects[0].Path)
 	}
 }
 
 func TestDiscover_HandlesMultipleSearchPaths(t *testing.T) {
-	root1 := t.TempDir()
-	root2 := t.TempDir()
-	createGitRepo(t, filepath.Join(root1, "project-a"))
-	createGitRepo(t, filepath.Join(root2, "project-b"))
-
-	projects := Discover([]string{root1, root2})
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/root1": {
+				&mockDirEntry{name: "project-a", isDir: true},
+			},
+			"/root1/project-a": {&mockDirEntry{name: ".git", isDir: true}},
+			"/root2": {
+				&mockDirEntry{name: "project-b", isDir: true},
+			},
+			"/root2/project-b": {&mockDirEntry{name: ".git", isDir: true}},
+		},
+	}
+	projects, err := Discover(fs, []string{"/root1", "/root2"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(projects) != 2 {
 		t.Errorf("expected 2 projects, got %d", len(projects))
@@ -131,11 +222,23 @@ func TestDiscover_HandlesMultipleSearchPaths(t *testing.T) {
 }
 
 func TestDiscover_SkipsHiddenDirectories(t *testing.T) {
-	root := t.TempDir()
-	createGitRepo(t, filepath.Join(root, ".hidden", "secret-project"))
-	createGitRepo(t, filepath.Join(root, "visible-project"))
-
-	projects := Discover([]string{root})
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/home/user": {
+				&mockDirEntry{name: ".hidden", isDir: true},
+				&mockDirEntry{name: "visible-project", isDir: true},
+			},
+			"/home/user/.hidden": {
+				&mockDirEntry{name: "secret-project", isDir: true},
+			},
+			"/home/user/.hidden/secret-project": {&mockDirEntry{name: ".git", isDir: true}},
+			"/home/user/visible-project":        {&mockDirEntry{name: ".git", isDir: true}},
+		},
+	}
+	projects, err := Discover(fs, []string{"/home/user"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(projects) != 1 {
 		t.Errorf("expected 1 project, got %d", len(projects))
@@ -146,10 +249,27 @@ func TestDiscover_SkipsHiddenDirectories(t *testing.T) {
 }
 
 func TestDiscover_HandlesNonExistentPath(t *testing.T) {
-	projects := Discover([]string{"/nonexistent/path/that/does/not/exist"})
+	fs := &mockFileSystem{}
+	projects, err := Discover(fs, []string{"/nonexistent/path/that/does/not/exist"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(projects) != 0 {
 		t.Errorf("expected 0 projects, got %d", len(projects))
+	}
+}
+
+func TestDiscover_ReturnsError(t *testing.T) {
+	fs := &mockFileSystem{
+		readErr: errors.New("read error"),
+	}
+	_, err := Discover(fs, []string{"/home/user"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if err.Error() != "read error" {
+		t.Errorf("expected 'read error', got %q", err.Error())
 	}
 }
 

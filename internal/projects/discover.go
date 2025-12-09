@@ -1,9 +1,11 @@
 package projects
 
 import (
-	"os"
+	"errors"
 	"path/filepath"
 	"sync"
+
+	"dev/internal/filesystem"
 )
 
 // Project represents a discovered git repository.
@@ -14,25 +16,27 @@ type Project struct {
 
 // Discover finds all git repositories within the given search paths.
 // It walks directories in parallel and deduplicates results.
-func Discover(searchPaths []string) []Project {
+func Discover(fs filesystem.FileSystem, searchPaths []string) ([]Project, error) {
 	if len(searchPaths) == 0 {
-		return []Project{}
+		return []Project{}, nil
 	}
 
 	var wg sync.WaitGroup
 	resultCh := make(chan Project, 64)
+	errCh := make(chan error, 64)
 
 	for _, sp := range searchPaths {
 		wg.Add(1)
 		go func(searchPath string) {
 			defer wg.Done()
-			walkRecursive(searchPath, 0, resultCh)
+			walkRecursive(fs, searchPath, 0, resultCh, errCh)
 		}(sp)
 	}
 
 	go func() {
 		wg.Wait()
 		close(resultCh)
+		close(errCh)
 	}()
 
 	// Collect and deduplicate
@@ -44,16 +48,26 @@ func Discover(searchPaths []string) []Project {
 			result = append(result, p)
 		}
 	}
-	return result
+	var errs []error
+	for err := range errCh {
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		return result, errors.Join(errs...)
+	}
+
+	return result, nil
 }
 
-func walkRecursive(dir string, depth int, out chan<- Project) {
+func walkRecursive(fs filesystem.FileSystem, dir string, depth int, out chan<- Project, errCh chan<- error) {
 	if depth > 2 {
 		return
 	}
 
-	entries, err := os.ReadDir(dir)
+	entries, err := fs.ReadDir(dir)
 	if err != nil {
+		errCh <- err
 		return
 	}
 
@@ -79,6 +93,6 @@ func walkRecursive(dir string, depth int, out chan<- Project) {
 		}
 
 		// Recurse
-		walkRecursive(filepath.Join(dir, name), depth+1, out)
+		walkRecursive(fs, filepath.Join(dir, name), depth+1, out, errCh)
 	}
 }
