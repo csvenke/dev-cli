@@ -1,10 +1,47 @@
 package searchpath
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+type mockDirEntry struct {
+	name  string
+	isDir bool
+}
+
+func (m *mockDirEntry) Name() string {
+	return m.name
+}
+
+func (m *mockDirEntry) IsDir() bool {
+	return m.isDir
+}
+
+func (m *mockDirEntry) Type() os.FileMode {
+	if m.isDir {
+		return os.ModeDir
+	}
+	return 0
+}
+
+func (m *mockDirEntry) Info() (os.FileInfo, error) {
+	return nil, nil
+}
+
+type mockFileSystem struct {
+	dirs    map[string][]os.DirEntry
+	readErr error
+}
+
+func (m *mockFileSystem) ReadDir(path string) ([]os.DirEntry, error) {
+	if m.readErr != nil {
+		return nil, m.readErr
+	}
+	return m.dirs[path], nil
+}
 
 func TestResolve_PrefersArgs(t *testing.T) {
 	result := Resolve([]string{"/custom/path", "/another/path"})
@@ -53,44 +90,43 @@ func TestResolve_FallsBackToHome(t *testing.T) {
 	}
 }
 
-func TestDiscover_FindsSubdirs(t *testing.T) {
-	tempHome := t.TempDir()
-
-	if err := os.MkdirAll(filepath.Join(tempHome, "repos"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(tempHome, "work"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	// Create a file (should be ignored)
-	if err := os.WriteFile(filepath.Join(tempHome, "file.txt"), []byte("test"), 0644); err != nil {
-		t.Fatal(err)
+func TestExpand_FindsSubdirs(t *testing.T) {
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/home/user": {
+				&mockDirEntry{name: "repos", isDir: true},
+				&mockDirEntry{name: "work", isDir: true},
+				&mockDirEntry{name: "file.txt", isDir: false},
+			},
+		},
 	}
 
-	result := Expand([]string{tempHome})
+	result, err := Expand(fs, []string{"/home/user"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(result) != 2 {
 		t.Errorf("expected 2 paths (dirs only), got %d: %v", len(result), result)
 	}
 }
 
-func TestDiscover_ExcludesHiddenDirs(t *testing.T) {
-	tempHome := t.TempDir()
-
-	if err := os.MkdirAll(filepath.Join(tempHome, ".config"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(tempHome, ".local"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(tempHome, "repos"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(tempHome, "Documents"), 0755); err != nil {
-		t.Fatal(err)
+func TestExpand_ExcludesHiddenDirs(t *testing.T) {
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/home/user": {
+				&mockDirEntry{name: ".config", isDir: true},
+				&mockDirEntry{name: ".local", isDir: true},
+				&mockDirEntry{name: "repos", isDir: true},
+				&mockDirEntry{name: "Documents", isDir: true},
+			},
+		},
 	}
 
-	result := Expand([]string{tempHome})
+	result, err := Expand(fs, []string{"/home/user"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(result) != 2 {
 		t.Errorf("expected 2 paths (non-hidden), got %d: %v", len(result), result)
@@ -102,27 +138,37 @@ func TestDiscover_ExcludesHiddenDirs(t *testing.T) {
 	}
 }
 
-func TestDiscover_ReturnsEmptyOnNoSubdirs(t *testing.T) {
-	tempHome := t.TempDir()
+func TestExpand_ReturnsEmptyOnNoSubdirs(t *testing.T) {
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/home/user": {},
+		},
+	}
 
-	result := Expand([]string{tempHome})
+	result, err := Expand(fs, []string{"/home/user"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(result) != 0 {
 		t.Errorf("expected empty result, got %v", result)
 	}
 }
 
-func TestDiscover_BuildsFullPaths(t *testing.T) {
-	tempHome := t.TempDir()
-
-	if err := os.MkdirAll(filepath.Join(tempHome, "repos"), 0755); err != nil {
-		t.Fatal(err)
+func TestExpand_BuildsFullPaths(t *testing.T) {
+	fs := &mockFileSystem{
+		dirs: map[string][]os.DirEntry{
+			"/home/user": {
+				&mockDirEntry{name: "repos", isDir: true},
+				&mockDirEntry{name: "work", isDir: true},
+			},
+		},
 	}
-	if err := os.MkdirAll(filepath.Join(tempHome, "work"), 0755); err != nil {
-		t.Fatal(err)
-	}
 
-	result := Expand([]string{tempHome})
+	result, err := Expand(fs, []string{"/home/user"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(result) != 2 {
 		t.Fatalf("expected 2 paths, got %d: %v", len(result), result)
@@ -133,8 +179,22 @@ func TestDiscover_BuildsFullPaths(t *testing.T) {
 		if !filepath.IsAbs(p) {
 			t.Errorf("expected absolute path, got %q", p)
 		}
-		if filepath.Dir(p) != tempHome {
-			t.Errorf("expected parent to be %q, got %q", tempHome, filepath.Dir(p))
+		if filepath.Dir(p) != "/home/user" {
+			t.Errorf("expected parent to be %q, got %q", "/home/user", filepath.Dir(p))
 		}
+	}
+}
+
+func TestExpand_ReturnsError(t *testing.T) {
+	fs := &mockFileSystem{
+		readErr: errors.New("read error"),
+	}
+
+	_, err := Expand(fs, []string{"/home/user"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if err.Error() != "read error" {
+		t.Errorf("expected 'read error', got %q", err.Error())
 	}
 }

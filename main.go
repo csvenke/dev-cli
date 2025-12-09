@@ -7,6 +7,7 @@ import (
 
 	"dev/internal/config"
 	"dev/internal/editor"
+	"dev/internal/filesystem"
 	"dev/internal/hooks"
 	"dev/internal/projects"
 	"dev/internal/searchpath"
@@ -45,16 +46,28 @@ func main() {
 			&hooks.ZellijHook{},
 		},
 	}
+	fs := &filesystem.RealFileSystem{}
 
 	resolvedPaths := searchpath.Resolve(flag.Args())
-	discoveredProjects := projects.Discover(searchpath.Expand(resolvedPaths))
+
+	expandedPaths, err := searchpath.Expand(fs, resolvedPaths)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+
+	discoveredProjects, err := projects.Discover(fs, expandedPaths)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
 
 	if len(discoveredProjects) == 0 {
 		fmt.Fprintln(os.Stderr, "No projects found")
 		os.Exit(1)
 	}
 
-	selectedProject, err := tui.Run(discoveredProjects, tui.DefaultKeyMap(), cfg.Icons)
+	model := tui.NewModel(discoveredProjects, tui.DefaultKeyMap(), cfg.Icons)
+
+	selectedProject, err := tui.Run(model)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
