@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/csvenke/dev-cli)](https://github.com/csvenke/dev-cli/releases)
 [![build](https://img.shields.io/github/actions/workflow/status/csvenke/dev-cli/pull-request.yml)](https://github.com/csvenke/dev-cli/actions)
 
-<img width="500px" src="./assets/dev-cli.png"></img>
+<img width="500px" src="./assets/demo.gif"></img>
 
 </div>
 
