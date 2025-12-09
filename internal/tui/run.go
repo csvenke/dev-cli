@@ -5,26 +5,28 @@ import (
 
 	"dev/internal/projects"
 
+	"github.com/samber/lo"
+	"github.com/samber/mo"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// Run starts the TUI and returns the selected project.
-// Returns zero-value Project if user cancelled, error if TUI failed.
-func Run(m tea.Model) (projects.Project, error) {
+func Run(m tea.Model) mo.Result[projects.Project] {
 	program := tea.NewProgram(m, tea.WithAltScreen())
 
 	finalModel, err := program.Run()
 	if err != nil {
-		return projects.Project{}, fmt.Errorf("tui: %w", err)
+		return mo.Err[projects.Project](fmt.Errorf("tui: %w", err))
 	}
 
 	model := finalModel.(Model)
 
-	for _, p := range model.projects {
-		if p.Path == model.Selected {
-			return p, nil
-		}
+	project, ok := lo.Find(model.projects, func(p projects.Project) bool {
+		return p.Path == model.Selected
+	})
+	if !ok {
+		return mo.Err[projects.Project](fmt.Errorf("no project found"))
 	}
 
-	return projects.Project{}, nil
+	return mo.Ok(project)
 }

@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"strings"
 
-	"dev/internal/config"
 	"dev/internal/projects"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+type Icons struct {
+	Dir string
+}
 
 // Layout constants
 const (
@@ -37,7 +40,7 @@ type Model struct {
 	width    int
 	height   int
 	quitting bool
-	icons    config.Icons
+	icons    Icons
 }
 
 type layout struct {
@@ -47,7 +50,7 @@ type layout struct {
 	maxListHeight int
 }
 
-func NewModel(p []projects.Project, keys KeyMap, icons config.Icons) Model {
+func NewModel(p []projects.Project, keys KeyMap, icons Icons) Model {
 	return Model{
 		keys:     keys,
 		projects: p,
