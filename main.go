@@ -38,7 +38,8 @@ func main() {
 		Term: terminal.Detect(),
 		Fs:   &filesystem.RealFileSystem{},
 		Icons: tui.Icons{
-			Dir: "",
+			Dir:  "",
+			Term: "",
 		},
 	}
 

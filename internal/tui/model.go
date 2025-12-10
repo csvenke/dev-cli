@@ -13,6 +13,7 @@ import (
 
 type Icons struct {
 	Dir string
+	Term string
 }
 
 // Layout constants

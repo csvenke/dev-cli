@@ -39,7 +39,8 @@ func Run(cfg Config) mo.Result[string] {
 		return mo.Err[string](err)
 	}
 
-	_ = cfg.Term.RenameTab(tuiResult.Name)
+	title := fmt.Sprintf("%s %s", cfg.Icons.Term, tuiResult.Name)
+	_ = cfg.Term.RenameTab(title)
 
 	return cfg.Term.OpenEditor(tuiResult.Path)
 }
