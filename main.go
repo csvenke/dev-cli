@@ -34,14 +34,15 @@ func main() {
 	}
 
 	cfg := app.Config{
+		Args: flag.Args(),
+		Term: terminal.Detect(),
+		Fs:   &filesystem.RealFileSystem{},
 		Icons: tui.Icons{
 			Dir: "",
 		},
-		Terminal: terminal.Detect(),
 	}
-	fs := &filesystem.RealFileSystem{}
 
-	_, err := app.Run(flag.Args(), cfg, fs).Get()
+	_, err := app.Run(cfg).Get()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

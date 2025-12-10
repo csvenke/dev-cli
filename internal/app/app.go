@@ -12,12 +12,14 @@ import (
 )
 
 type Config struct {
-	Icons    tui.Icons
-	Terminal terminal.Terminal
+	Args  []string
+	Icons tui.Icons
+	Term  terminal.Terminal
+	Fs    filesystem.FileSystem
 }
 
-func Run(args []string, cfg Config, fs filesystem.FileSystem) mo.Result[string] {
-	projectsResult, err := projects.Discover(fs, args).Get()
+func Run(cfg Config) mo.Result[string] {
+	projectsResult, err := projects.Discover(cfg.Fs, cfg.Args).Get()
 	if err != nil {
 		return mo.Err[string](err)
 	}
@@ -32,12 +34,12 @@ func Run(args []string, cfg Config, fs filesystem.FileSystem) mo.Result[string] 
 		return mo.Err[string](err)
 	}
 
-	_, err = fs.Chdir(tuiResult.Path).Get()
+	_, err = cfg.Fs.Chdir(tuiResult.Path).Get()
 	if err != nil {
 		return mo.Err[string](err)
 	}
 
-	_ = cfg.Terminal.RenameTab(tuiResult.Name)
+	_ = cfg.Term.RenameTab(tuiResult.Name)
 
-	return cfg.Terminal.OpenEditor(tuiResult.Path)
+	return cfg.Term.OpenEditor(tuiResult.Path)
 }
