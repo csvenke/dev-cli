@@ -7,7 +7,7 @@ import (
 
 	"dev/internal/app"
 	"dev/internal/filesystem"
-	"dev/internal/hooks"
+	"dev/internal/terminal"
 	"dev/internal/tui"
 )
 
@@ -37,7 +37,7 @@ func main() {
 		Icons: tui.Icons{
 			Dir: "",
 		},
-		Hooks: hooks.Default,
+		Terminal: terminal.Detect(),
 	}
 	fs := &filesystem.RealFileSystem{}
 
