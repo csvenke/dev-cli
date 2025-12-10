@@ -86,6 +86,9 @@ jobs:
 
   merge-ready:
     runs-on: ubuntu-latest
+    if: ${{ always() }}
     needs: [lint, test, build, benchmark]
     steps:
+      - if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: exit 1
       - run: echo "LGTM"
