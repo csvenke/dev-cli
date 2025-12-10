@@ -37,7 +37,7 @@ func Run(args []string, cfg Config, fs filesystem.FileSystem) mo.Result[string] 
 		return mo.Err[string](err)
 	}
 
-	cfg.Terminal.RenameTab(tuiResult.Name)
+	_ = cfg.Terminal.RenameTab(tuiResult.Name)
 
 	return cfg.Terminal.OpenEditor(tuiResult.Path)
 }
