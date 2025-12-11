@@ -26,11 +26,7 @@ func Detect() Terminal {
 type Zellij struct{}
 
 func (z *Zellij) OpenEditor(path string) mo.Result[string] {
-	editor, err := getEditorFromEnv().Get()
-	if err != nil {
-		return mo.Err[string](err)
-	}
-	return run("zellij", "", "run", "--cwd", path, "-c", "-i", "--", editor)
+	return run("zellij", "", "edit", "--cwd", path, "-i", ".")
 }
 
 func (z *Zellij) RenameTab(name string) error {
