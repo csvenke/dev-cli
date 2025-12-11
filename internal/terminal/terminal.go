@@ -81,10 +81,10 @@ func run(name string, dir string, args ...string) mo.Result[string] {
 }
 
 func getEditorFromEnv() mo.Result[string] {
-	if editor := os.Getenv("VISUAL"); editor != "" {
+	if editor := os.Getenv("EDITOR"); editor != "" {
 		return mo.Ok(editor)
 	}
-	if editor := os.Getenv("EDITOR"); editor != "" {
+	if editor := os.Getenv("VISUAL"); editor != "" {
 		return mo.Ok(editor)
 	}
 	return mo.Err[string](fmt.Errorf("$VISUAL or $EDITOR is not set"))
