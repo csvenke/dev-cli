@@ -15,9 +15,12 @@ var version string
 
 func main() {
 	var printVersion bool
+	var printPath bool
 
 	flag.BoolVar(&printVersion, "v", false, "print version")
 	flag.BoolVar(&printVersion, "version", false, "print version")
+	flag.BoolVar(&printPath, "p", false, "print selected project path to stdout")
+	flag.BoolVar(&printPath, "print-path", false, "print selected project path to stdout")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: dev [options] [path...]\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
@@ -35,6 +38,9 @@ func main() {
 
 	cfg := app.Config{
 		Args: flag.Args(),
+		Flags: app.Flags{
+			PrintPath: printPath,
+		},
 		Term: terminal.Detect(),
 		Fs:   &filesystem.RealFileSystem{},
 		Icons: tui.Icons{
@@ -48,5 +54,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+
 	os.Exit(0)
 }

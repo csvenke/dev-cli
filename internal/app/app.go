@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/samber/mo"
 
@@ -11,8 +12,13 @@ import (
 	"dev/internal/tui"
 )
 
+type Flags struct {
+	PrintPath bool
+}
+
 type Config struct {
 	Args  []string
+	Flags Flags
 	Icons tui.Icons
 	Term  terminal.Terminal
 	Fs    filesystem.FileSystem
@@ -39,8 +45,18 @@ func Run(cfg Config) mo.Result[string] {
 		return mo.Err[string](err)
 	}
 
+	if cfg.Flags.PrintPath {
+		fmt.Fprintln(os.Stdout, tuiResult.Path)
+		return mo.Ok(tuiResult.Path)
+	}
+
 	title := fmt.Sprintf("%s %s", cfg.Icons.Term, tuiResult.Name)
 	_ = cfg.Term.RenameTab(title)
 
-	return cfg.Term.OpenEditor(tuiResult.Path)
+	_, err = cfg.Term.OpenEditor(tuiResult.Path).Get()
+	if err != nil {
+		return mo.Err[string](err)
+	}
+
+	return mo.Ok(tuiResult.Path)
 }
