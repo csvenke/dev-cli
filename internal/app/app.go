@@ -46,7 +46,10 @@ func Run(cfg Config) mo.Result[string] {
 	}
 
 	if cfg.Flags.PrintPath {
-		fmt.Fprintln(os.Stdout, tuiResult.Path)
+		_, err = fmt.Fprintln(os.Stdout, tuiResult.Path)
+		if err != nil {
+			return mo.Err[string](err)
+		}
 		return mo.Ok(tuiResult.Path)
 	}
 
