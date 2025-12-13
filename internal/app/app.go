@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/samber/mo"
 
@@ -46,10 +45,6 @@ func Run(cfg Config) mo.Result[string] {
 	}
 
 	if cfg.Flags.PrintPath {
-		_, err = fmt.Fprintln(os.Stdout, tuiResult.Path)
-		if err != nil {
-			return mo.Err[string](err)
-		}
 		return mo.Ok(tuiResult.Path)
 	}
 
@@ -61,5 +56,5 @@ func Run(cfg Config) mo.Result[string] {
 		return mo.Err[string](err)
 	}
 
-	return mo.Ok(tuiResult.Path)
+	return mo.Ok("")
 }

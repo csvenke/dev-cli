@@ -49,11 +49,11 @@ func main() {
 		},
 	}
 
-	_, err := app.Run(cfg).Get()
+	res, err := app.Run(cfg).Get()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-	os.Exit(0)
+	fmt.Fprintln(os.Stdout, res)
 }
