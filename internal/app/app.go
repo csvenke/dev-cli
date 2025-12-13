@@ -12,7 +12,8 @@ import (
 )
 
 type Flags struct {
-	PrintPath bool
+	PrintPath     bool
+	NoUpdateTitle bool
 }
 
 type Config struct {
@@ -48,8 +49,10 @@ func Run(cfg Config) mo.Result[string] {
 		return mo.Ok(tuiResult.Path)
 	}
 
-	title := fmt.Sprintf("%s %s", cfg.Icons.Term, tuiResult.Name)
-	_ = cfg.Term.RenameTab(title)
+	if !cfg.Flags.NoUpdateTitle {
+		title := fmt.Sprintf("%s %s", cfg.Icons.Term, tuiResult.Name)
+		_ = cfg.Term.RenameTab(title)
+	}
 
 	_, err = cfg.Term.OpenEditor(tuiResult.Path).Get()
 	if err != nil {

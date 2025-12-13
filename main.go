@@ -16,11 +16,14 @@ var version string
 func main() {
 	var printVersion bool
 	var printPath bool
+	var noUpdateTitle bool
 
 	flag.BoolVar(&printVersion, "v", false, "print version")
 	flag.BoolVar(&printVersion, "version", false, "print version")
 	flag.BoolVar(&printPath, "p", false, "print selected project path to stdout")
 	flag.BoolVar(&printPath, "print-path", false, "print selected project path to stdout")
+	flag.BoolVar(&noUpdateTitle, "n", false, "do not update terminal tab title")
+	flag.BoolVar(&noUpdateTitle, "no-update-title", false, "do not update terminal tab title")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: dev [options] [path...]\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
@@ -39,7 +42,8 @@ func main() {
 	cfg := app.Config{
 		Args: flag.Args(),
 		Flags: app.Flags{
-			PrintPath: printPath,
+			PrintPath:     printPath,
+			NoUpdateTitle: noUpdateTitle,
 		},
 		Term: terminal.Detect(),
 		Fs:   &filesystem.RealFileSystem{},
