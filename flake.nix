@@ -14,8 +14,16 @@
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = nixpkgs.lib.systems.flakeExposed;
       perSystem =
-        { pkgs, ... }:
+        { system, ... }:
         let
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [
+              (final: prev: {
+                go = prev.go_1_25;
+              })
+            ];
+          };
           inherit (pkgs) lib callPackage;
           version = self.shortRev or self.dirtyShortRev or "snapshot";
           scripts = lib.packagesFromDirectoryRecursive {
