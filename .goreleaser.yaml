@@ -32,10 +32,15 @@ archives:
 
 changelog:
   sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?bug(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Other changes
+      order: 999
 
 release:
   footer: >-
