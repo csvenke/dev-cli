@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>dev-cli</h1>
+<img width="200" src="./assets/logo.png" />
 
 **Effortless project navigation for the terminal**
 
