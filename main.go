@@ -59,5 +59,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Fprintln(os.Stdout, res)
+	_, err = fmt.Fprintln(os.Stdout, res)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
