@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 
 	"dev/internal/projects"
 
@@ -12,7 +13,11 @@ import (
 )
 
 func Run(m tea.Model) mo.Result[projects.Project] {
-	program := tea.NewProgram(m, tea.WithAltScreen())
+	program := tea.NewProgram(m,
+		tea.WithAltScreen(),
+		tea.WithInputTTY(),
+		tea.WithOutput(os.Stderr),
+	)
 
 	finalModel, err := program.Run()
 	if err != nil {
