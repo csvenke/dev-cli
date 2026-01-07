@@ -44,7 +44,7 @@ func (t *Tmux) OpenEditor(path string) mo.Result[string] {
 	if err != nil {
 		return mo.Err[string](err)
 	}
-	return run("tmux", "", "respawn-pane", "-k", "-c", path, editor, ".")
+	return run("tmux", "", "respawn-pane", "-k", "-c", path, editor)
 }
 
 func (t *Tmux) RenameTab(name string) error {
