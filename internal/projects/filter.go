@@ -3,6 +3,7 @@ package projects
 import (
 	"sort"
 	"strings"
+	"unicode"
 )
 
 func Filter(projects []Project, query string) []Project {
@@ -44,9 +45,6 @@ const (
 	scoreWordBoundary = 3
 )
 
-// FuzzyScore calculates a fuzzy match score between query and target.
-// Returns 0 if no match, higher scores indicate better matches.
-// Exported for testing.
 func FuzzyScore(query string, target string) int {
 	if len(query) == 0 {
 		return 1
@@ -55,21 +53,24 @@ func FuzzyScore(query string, target string) int {
 		return 0
 	}
 
+	queryRunes := []rune(query)
+	targetRunes := []rune(target)
+
 	score := 0
 	qi := 0
 	prevMatch := -2
 
-	for ti := 0; ti < len(target) && qi < len(query); ti++ {
-		if len(target)-ti < len(query)-qi {
+	for ti := 0; ti < len(targetRunes) && qi < len(queryRunes); ti++ {
+		if len(targetRunes)-ti < len(queryRunes)-qi {
 			return 0
 		}
 
-		if target[ti] == query[qi] {
+		if targetRunes[ti] == queryRunes[qi] {
 			score += scoreMatch
 			if ti == prevMatch+1 {
 				score += scoreConsecutive
 			}
-			if ti == 0 || !isLetter(target[ti-1]) {
+			if ti == 0 || !isLetter(targetRunes[ti-1]) {
 				score += scoreWordBoundary
 			}
 			prevMatch = ti
@@ -77,12 +78,12 @@ func FuzzyScore(query string, target string) int {
 		}
 	}
 
-	if qi == len(query) {
+	if qi == len(queryRunes) {
 		return score
 	}
 	return 0
 }
 
-func isLetter(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+func isLetter(r rune) bool {
+	return unicode.IsLetter(r)
 }

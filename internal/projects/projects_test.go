@@ -445,6 +445,111 @@ func TestFilter_FuzzyPrefersWordBoundaryMatches(t *testing.T) {
 	}
 }
 
+func TestFilter_MatchesNorwegianCharacters(t *testing.T) {
+	projects := []Project{
+		{Name: "øl-project", Path: "/repos/øl-project"},
+		{Name: "særen", Path: "/repos/særen"},
+		{Name: "håland", Path: "/repos/håland"},
+	}
+
+	result := Filter(projects, "øl")
+	if len(result) != 1 {
+		t.Errorf("expected 1 match for 'øl', got %d", len(result))
+	}
+	if result[0].Name != "øl-project" {
+		t.Errorf("expected 'øl-project', got %q", result[0].Name)
+	}
+
+	result = Filter(projects, "sæ")
+	if len(result) != 1 {
+		t.Errorf("expected 1 match for 'sæ', got %d", len(result))
+	}
+	if result[0].Name != "særen" {
+		t.Errorf("expected 'særen', got %q", result[0].Name)
+	}
+
+	result = Filter(projects, "hå")
+	if len(result) != 1 {
+		t.Errorf("expected 1 match for 'hå', got %d", len(result))
+	}
+	if result[0].Name != "håland" {
+		t.Errorf("expected 'håland', got %q", result[0].Name)
+	}
+}
+
+func TestFilter_NorwegianCaseInsensitive(t *testing.T) {
+	projects := []Project{
+		{Name: "ØL-PROJECT", Path: "/repos/ØL-PROJECT"},
+		{Name: "SÆREN", Path: "/repos/SÆREN"},
+		{Name: "HÅLAND", Path: "/repos/HÅLAND"},
+	}
+
+	tests := []struct {
+		query  string
+		expect string
+	}{
+		{"øl", "ØL-PROJECT"},
+		{"øL", "ØL-PROJECT"},
+		{"ØL", "ØL-PROJECT"},
+		{"sæ", "SÆREN"},
+		{"SÆ", "SÆREN"},
+		{"hå", "HÅLAND"},
+		{"HÅ", "HÅLAND"},
+	}
+
+	for _, tt := range tests {
+		result := Filter(projects, tt.query)
+		if len(result) != 1 {
+			t.Errorf("query %q: expected 1 match, got %d", tt.query, len(result))
+			continue
+		}
+		if result[0].Name != tt.expect {
+			t.Errorf("query %q: expected %q, got %q", tt.query, tt.expect, result[0].Name)
+		}
+	}
+}
+
+func TestFilter_NorwegianFuzzyMatching(t *testing.T) {
+	projects := []Project{
+		{Name: "første-prosjekt", Path: "/repos/første-prosjekt"},
+		{Name: "anden-prosjekt", Path: "/repos/anden-prosjekt"},
+	}
+
+	// "fp" should match "første-prosjekt"
+	result := Filter(projects, "fp")
+	if len(result) != 1 {
+		t.Errorf("expected 1 match for 'fp', got %d", len(result))
+	}
+	if result[0].Name != "første-prosjekt" {
+		t.Errorf("expected 'første-prosjekt', got %q", result[0].Name)
+	}
+
+	// "ap" should match "anden-prosjekt"
+	result = Filter(projects, "ap")
+	if len(result) != 1 {
+		t.Errorf("expected 1 match for 'ap', got %d", len(result))
+	}
+	if result[0].Name != "anden-prosjekt" {
+		t.Errorf("expected 'anden-prosjekt', got %q", result[0].Name)
+	}
+}
+
+func TestFilter_NorwegianWordBoundary(t *testing.T) {
+	projects := []Project{
+		{Name: "xølx", Path: "/repos/xølx"},
+		{Name: "øl-project", Path: "/repos/øl-project"},
+	}
+
+	// "øl" at start should rank higher
+	result := Filter(projects, "øl")
+	if len(result) != 2 {
+		t.Fatalf("expected 2 matches, got %d", len(result))
+	}
+	if result[0].Name != "øl-project" {
+		t.Errorf("expected 'øl-project' first (word boundary), got %q", result[0].Name)
+	}
+}
+
 func TestScore_ScoreIsNonNegative(t *testing.T) {
 	properties := gopter.NewProperties(nil)
 

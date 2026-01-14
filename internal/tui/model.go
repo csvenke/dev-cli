@@ -12,7 +12,7 @@ import (
 )
 
 type Icons struct {
-	Dir string
+	Dir  string
 	Term string
 }
 
@@ -98,7 +98,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Backspace):
 			if len(m.query) > 0 {
-				m.query = m.query[:len(m.query)-1]
+				runes := []rune(m.query)
+				m.query = string(runes[:len(runes)-1])
 				m.filtered = projects.Filter(m.projects, m.query)
 				m.cursor = 0
 			}
@@ -113,8 +114,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		default:
-			if len(msg.String()) == 1 {
-				m.query += msg.String()
+			if msg.Type == tea.KeyRunes {
+				m.query += string(msg.Runes)
 				m.filtered = projects.Filter(m.projects, m.query)
 				m.cursor = 0
 			}
