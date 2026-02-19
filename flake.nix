@@ -20,7 +20,8 @@
             inherit system;
             overlays = [
               (final: prev: {
-                go = prev.go_1_25;
+                go = prev.go_1_26;
+                buildGoModule = prev.buildGoModule.override { go = prev.go_1_26; };
               })
             ];
           };
